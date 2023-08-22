@@ -5,37 +5,40 @@
 '''
 
 #%% import all necessary package
-import tkinter
-from tkinter import filedialog
-import pandas as pd
-import numpy as np
-
-import glob
-import sys
 import os
 import re
+import glob
+import warnings
+from datetime import datetime
+
+import tkinter as tk
+from tkinter import filedialog, ttk
+
+import numpy as np
+import pandas as pd
 import seaborn as sns
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from pathlib import Path
-from datetime import date, datetime
-import warnings
-# Ignore all warnings
+import pkg_resources
+
+# Ignoring warnings
 warnings.filterwarnings("ignore")
 
-import pkg_resources
-installed_packages = pkg_resources.working_set
-# Create an empty DataFrame with columns
-columns = ["Package", "Version"]
-data_pkg = pd.DataFrame(columns=columns)
+# installed_packages = pkg_resources.working_set
+# # Create an empty DataFrame with columns
+# columns = ["Package", "Version"]
+# data_pkg = pd.DataFrame(columns=columns)
 
-with open('requirements1.txt', 'w') as f:
-    for package in installed_packages:
-        f.write(f"{package.key}=={package.version}\n")
-        entry = [package.key, package.version]
-        row = pd.Series(entry, index=data_pkg.columns)
-        data_pkg = data_pkg.append(row, ignore_index=True)
-    print(data_pkg)
+# with open('requirements1.txt', 'w') as f:
+#     for package in installed_packages:
+#         f.write(f"{package.key}=={package.version}\n")
+#         entry = [package.key, package.version]
+#         row = pd.Series(entry, index=data_pkg.columns)
+#         data_pkg = data_pkg.append(row, ignore_index=True)
+#     print(data_pkg)
 
 #%% Define column name
 # To drop data column
@@ -77,6 +80,10 @@ col_name = ['PageNo',
  'addressLocality',
  'addressRegion']
 
+PRICE_THRESHOLD = 1000
+CURRENCY_ALLOWED = ["THB"]
+ENGINE_CAPACITY_THRESHOLD = 0.0
+
 #%% Define Function
 
 def check_and_create_directory(directory_path):
@@ -94,13 +101,26 @@ def color_flag(value):
 	else:
 		return "0"
 
-root = tkinter.Tk()
-root.withdraw() #use to hide tkinter window
+# Select Folder Function
+def save_selected_path(selected_path):
+    with open("selected_path.txt", "w") as file:
+        file.write(selected_path)
+
+def load_selected_path():
+    if os.path.exists("selected_path.txt"):
+        with open("selected_path.txt", "r") as file:
+            return file.read()
+    return None
+
 def search_for_file_path ():
+    prev_selected_path = load_selected_path()
+    root = tk.Tk()
+    root.withdraw() #use to hide tkinter window
     currdir = os.getcwd()
-    tempdir = filedialog.askdirectory(parent=root, initialdir=currdir, title='Please select a directory')
+    tempdir = filedialog.askdirectory(parent=root, initialdir=prev_selected_path, title='Please select a directory')
     if len(tempdir) > 0:
         print ("Path: %s" % tempdir)
+    save_selected_path(tempdir)
     return tempdir
 
 def calculate_price_statistics(df, lst_group, price_column='n_Price'):
@@ -129,17 +149,18 @@ print(date_time)
 print('**************** Data Loading **********************')
 root = search_for_file_path()
 ls_path = [os.path.join(path, name) 
-             for path, subdirs, files in os.walk(root) 
-             for name in files if name.endswith(".csv")]
-print(f'File Number: {len(ls_path)}')
-print('**************************************')
+           for path, subdirs, files in os.walk(root) 
+           for name in files if name.endswith(".csv")]
 
+df_noclean = pd.concat([pd.read_csv(x) for x in ls_path])
+print(f'Loaded {df_noclean.shape[0]} rows of data.')
+print('***************************************************')
 # Load to dataframe
 df_csv = [pd.read_csv(x) for x in ls_path]
 df_noclean = pd.concat(df_csv)
 
 # Drop colunm in dataframe and change column name
-df_drop = df_noclean.drop(columns= col_drop)
+df_drop = df_noclean.drop(columns=col_drop)
 df_drop.columns = col_name
 
 #Save path setup
@@ -220,14 +241,69 @@ save_path_target = f"03_DataSave/{date_time}_webone2car_final_cleaned.csv"
 df_cleaned.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
 
 #%% Pricing Data Range
-lst_group = ['Brand', 'Model','sub_Model', 'n_Year','Fuel']
-lst_group2 = ['Brand', 'Model','sub_Model', 'n_Year','Fuel', 'Gear']
+def select_columns_for_grouping(additional_columns=[]):
+    """
+    Create a GUI to select columns, and return a list of selected columns when the 'Add & Close' button is clicked.
+    
+    Params:
+    - additional_columns: A list of additional columns to be added to the checkbox GUI.
+    
+    Returns:
+    - A list of selected columns.
+    """
+    selected_columns = []
+
+    def add_to_list_and_close():
+        for var, col in zip(checkboxes_vars, columns_for_groupby):
+            if var.get():
+                selected_columns.append(col)
+        root.destroy()
+
+    root = tk.Tk()
+    root.title("Select Columns")
+
+    # Original list of columns
+    columns_for_groupby = ['Brand', 'Model', 'sub_Model', 'n_Year', 'Fuel', 'Gear']
+    # Combine the original list with additional columns
+    columns_for_groupby.extend(additional_columns)
+
+    frame = ttk.Frame(root)
+    frame.pack(padx=10, pady=10, expand=True, fill=tk.BOTH)
+
+    canvas = tk.Canvas(frame)
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+    checkboxes_vars = []
+    for col in columns_for_groupby:
+        var = tk.IntVar()
+        chk = ttk.Checkbutton(scrollable_frame, text=col, variable=var)
+        chk.pack(anchor="w")
+        checkboxes_vars.append(var)
+
+    btn_add_close = ttk.Button(root, text="Add & Close", command=add_to_list_and_close)
+    btn_add_close.pack(pady=10)
+
+    root.mainloop()
+    return selected_columns
+
+lst_group = select_columns_for_grouping()
+print(lst_group)
 
 # Group the DataFrame and calculate count, min, and max values
 df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
 
-# col_name2 = ['Brand', 'Model','sub_Model', 'n_Year', 'Gear','Fuel']
-# df_price_o2c.columns = col_name2
+#Save Data Pricing List from One2Car
+save_path_target = f"03_DataSave/{date_time}_webone2car_Final.csv"
+df_price_o2c.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
+
+# Group the DataFrame and calculate count, min, and max values
+df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
 
 #Save Data Pricing List from One2Car
 save_path_target = f"03_DataSave/{date_time}_webone2car_Final.csv"
