@@ -1,39 +1,47 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter.filedialog import askopenfilename, asksaveasfilename
 
-def browse_file():
-    file_path = filedialog.askopenfilename()
-    entry_file_path.delete(0, tk.END)
-    entry_file_path.insert(tk.END, file_path)
+def save_file():
+    """Save the current file as a new file."""
+    filepath = asksaveasfilename(
+        defaultextension=".txt",
+        filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
+    )
+    if not filepath:
+        return
+    with open(filepath, mode="w", encoding="utf-8") as output_file:
+        text = txt_edit.get("1.0", tk.END)
+        output_file.write(text)
+    window.title(f"Simple Text Editor - {filepath}")
 
-def submit_link():
-    link = entry_link.get()
-    print("Selected file:", entry_file_path.get())
-    print("Entered link:", link)
+def open_file():
+    """Open a file for editing."""
+    filepath = askopenfilename(
+        filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
+    )
+    if not filepath:
+        return
+    txt_edit.delete("1.0", tk.END)
+    with open(filepath, mode="r", encoding="utf-8") as input_file:
+        text = input_file.read()
+        txt_edit.insert(tk.END, text)
+    window.title(f"Simple Text Editor - {filepath}")
 
-# Create the Tkinter window
 window = tk.Tk()
+window.title("Simple Text Editor")
 
-# Create the file path label and entry
-label_file_path = tk.Label(window, text="File Path:")
-label_file_path.pack()
+window.rowconfigure(0, minsize=800, weight=1)
+window.columnconfigure(1, minsize=800, weight=1)
 
-entry_file_path = tk.Entry(window, width=50)
-entry_file_path.pack()
+txt_edit = tk.Text(window)
+frm_buttons = tk.Frame(window, relief=tk.RAISED, bd=2)
+btn_open = tk.Button(frm_buttons, text="Open", command=open_file)
+btn_save = tk.Button(frm_buttons, text="Save As...", command=save_file)
 
-button_browse = tk.Button(window, text="Browse", command=browse_file)
-button_browse.pack()
+btn_open.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+btn_save.grid(row=1, column=0, sticky="ew", padx=5)
 
-# Create the link label and entry
-label_link = tk.Label(window, text="Website Link:")
-label_link.pack()
+frm_buttons.grid(row=0, column=0, sticky="ns")
+txt_edit.grid(row=0, column=1, sticky="nsew")
 
-entry_link = tk.Entry(window, width=50)
-entry_link.pack()
-
-# Create the submit button
-button_submit = tk.Button(window, text="Submit", command=submit_link)
-button_submit.pack()
-
-# Run the Tkinter event loop
 window.mainloop()
