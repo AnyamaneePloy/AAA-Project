@@ -25,19 +25,19 @@ import warnings
 # Ignore all warnings
 warnings.filterwarnings("ignore")
 
-import pkg_resources
-installed_packages = pkg_resources.working_set
-# Create an empty DataFrame with columns
-columns = ["Package", "Version"]
-data_pkg = pd.DataFrame(columns=columns)
+# import pkg_resources
+# installed_packages = pkg_resources.working_set
+# # Create an empty DataFrame with columns
+# columns = ["Package", "Version"]
+# data_pkg = pd.DataFrame(columns=columns)
 
-with open('requirements1.txt', 'w') as f:
-    for package in installed_packages:
-        f.write(f"{package.key}=={package.version}\n")
-        entry = [package.key, package.version]
-        row = pd.Series(entry, index=data_pkg.columns)
-        data_pkg = data_pkg.append(row, ignore_index=True)
-    print(data_pkg)
+# with open('requirements1.txt', 'w') as f:
+#     for package in installed_packages:
+#         f.write(f"{package.key}=={package.version}\n")
+#         entry = [package.key, package.version]
+#         row = pd.Series(entry, index=data_pkg.columns)
+#         data_pkg = data_pkg.append(row, ignore_index=True)
+#     print(data_pkg)
 
 #%% Define column name
 # To drop data column
@@ -138,9 +138,8 @@ def calculate_price_statistics(df, lst_group, price_column='Price'):
     # Group the DataFrame and calculate count, mean, min, max, price differences, and mode
     agg_functions = {
         'Count': 'size',
-        'Mean_Price': 'mean',
-        'Median_Price': 'median',
-        'Mode_Price': mode,
+        'Mean_Price': lambda x: int(x.mean()),
+        'Median_Price': lambda x: int(x.median()),
         'Min_Price': 'min',
         'Max_Price': 'max',
         'Diff_Price': price_difference
@@ -153,7 +152,7 @@ def calculate_price_statistics(df, lst_group, price_column='Price'):
 #%%
 # Determine date to save file
 now = datetime.now() # current date and time
-date_time = now.strftime("%Y%m%d")
+date_time = now.strftime("%Y%m%d") #_%H%M")
 print(date_time)
 
 #%% Import Data from Web scraping on .CSV file
@@ -175,7 +174,7 @@ df_drop.columns = col_name
 
 #Save path setup
 save_path = os.path.dirname(os.path.dirname(root))
-save_path_target = f"03_DataSave/{date_time}_webone2car_original_noclean.csv"
+save_path_target = f"03_DataSave/03_One2Car_{date_time}_original.csv"
 save_path_result = os.path.dirname(os.path.join(save_path,save_path_target))
 #Check directory folder
 check_and_create_directory(save_path_result)
@@ -222,16 +221,29 @@ df_extract['CarTypes'] = df_extract['CarTypes'].astype(str)
 df_extract['WheelDrive'] = df_extract['WheelDrive'].astype(str)
 df_extract['Tmpsub_Model'] = df_extract['Tmpsub_Model'].astype(str)
 df_extract['SubModel'] = df_extract.apply(lambda row: row['Tmpsub_Model'].replace(row['Gear_Type'], '').replace(row['CarTypes'], '').replace(row['WheelDrive'], ''), axis=1)
-df_extract['SubModel'] = df_extract['SubModel'] .str.replace(r'  ', ' ')
+from collections import OrderedDict  
+# Using OrderedDict to maintain order of words while removing duplicates
+def remove_duplicate_words(s):
+    return ' '.join(OrderedDict.fromkeys(s.split()))
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'[\u0E00-\u0E7F]+', '')# 1. Remove Thai words
+df_extract['SubModel'] = df_extract['SubModel'].str.replace('null', '')# 2. Replace "null"
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'  ', ' ')# 3. Replace double spaces
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'(\d+\.\d+) ([a-zA-Z0-9\s]+) \1', r'\1 \2') # 4. Remove repeated decimal numbers with text in between
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'(\d+\.\d+) \1', r'\1')# 5. Remove direct repeated decimal numbers
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'(\d+\.\d+) +\1', r'\1')
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'\s+', ' ').str.strip()
+df_extract['SubModel'] = df_extract['SubModel'].apply(remove_duplicate_words)
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'\(|\)| -', '', regex=True).str.strip()# Removing () and -
+df_extract['SubModel'] = df_extract['SubModel'].str.replace(r'  ', ' ')# 3. Replace double spaces
+df_extract['SubModel'] = df_extract['SubModel'].str.strip()
 # Remove non-numeric characters (comma) and convert column A to float
 df_extract['Mile_km'] = df_extract['Mile_km'].str.replace(',', '').astype(float)
-# Determine color to favor( flag = 1) ['ขาว', 'ดำ'] color
-df_extract['Color_flg'] = df_extract['Color'].map(color_flag)
+df_extract['Color_flg'] = df_extract['Color'].map(color_flag)# Determine color to favor( flag = 1) ['ขาว', 'ดำ'] color
 
 #%% Data Cleaning 
 # Determine Threshold to exclude data 
 # Explore from data One2Car
-Th_price = 3000 
+Th_price = 5000 # based on data
 Th_currency = ["THB"]
 Th_cc = 0.0
 
@@ -248,12 +260,11 @@ df_cleaned['CC']= df_cleaned['CC'].astype(float)
 df_cleaned = df_cleaned.drop(columns= col_drop2)
 
 #Save Data Cleaned
-save_path_target = f"03_DataSave/{date_time}_webone2car_final_cleaned.csv"
+save_path_target = f"03_DataSave/03_One2Car_{date_time}_cleaned.csv"
 df_cleaned.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
 
 #%% Pricing Data Range
-lst_group = ['Brand', 'Model','SubModel', 'Year','Fuel']
-# lst_group2 = ['Brand', 'Model','sub_Model', 'Year','Fuel', 'Gear']
+lst_group = ['Brand', 'Model', 'SubModel', 'Year', 'Gear', 'Fuel', 'Color_flg', 'CarTypes']
 
 # Group the DataFrame and calculate count, min, and max values
 df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
@@ -262,7 +273,7 @@ df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
 # df_price_o2c.columns = col_name2
 
 #Save Data Pricing List from One2Car
-save_path_target = f"03_DataSave/{date_time}_webone2car_Final.csv"
+save_path_target = f"03_DataSave/03_One2Car_{date_time}.csv"
 df_price_o2c.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
 
 #%% Data Summary
