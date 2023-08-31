@@ -5,40 +5,39 @@
 '''
 
 #%% import all necessary package
-import os
-import re
-import glob
-import warnings
-from datetime import datetime
-
 import tkinter as tk
 from tkinter import filedialog, ttk
-
-import numpy as np
-import pandas as pd
-import seaborn as sns
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+import glob
+import sys
+import os
+import re
+import seaborn as sns
 
 from pathlib import Path
-import pkg_resources
-
-# Ignoring warnings
+from datetime import date, datetime
+import warnings
+# Ignore all warnings
 warnings.filterwarnings("ignore")
 
-# installed_packages = pkg_resources.working_set
-# # Create an empty DataFrame with columns
-# columns = ["Package", "Version"]
-# data_pkg = pd.DataFrame(columns=columns)
+import pkg_resources
+installed_packages = pkg_resources.working_set
+# Create an empty DataFrame with columns
+columns = ["Package", "Version"]
+data_pkg = pd.DataFrame(columns=columns)
 
-# with open('requirements1.txt', 'w') as f:
-#     for package in installed_packages:
-#         f.write(f"{package.key}=={package.version}\n")
-#         entry = [package.key, package.version]
-#         row = pd.Series(entry, index=data_pkg.columns)
-#         data_pkg = data_pkg.append(row, ignore_index=True)
-#     print(data_pkg)
+with open('requirements1.txt', 'w') as f:
+    for package in installed_packages:
+        f.write(f"{package.key}=={package.version}\n")
+        entry = [package.key, package.version]
+        row = pd.Series(entry, index=data_pkg.columns)
+        data_pkg = data_pkg.append(row, ignore_index=True)
+    print(data_pkg)
 
 #%% Define column name
 # To drop data column
@@ -59,8 +58,8 @@ col_drop = ["item.offers.seller.homeLocation.address.url"
 ,"@type"        
 ,"Unnamed: 1"        
 ,"item.image"]
-col_drop2 = ['n_Color',
- 'Gear_Type',
+
+col_drop2 = ['Gear_Type',
  'Description_2',
  'Tmpsub_Model'
 ]
@@ -71,21 +70,16 @@ col_name = ['PageNo',
  'Description',
  'Brand',
  'Model',
- 'n_CarTypes',
+ 'CarTypes',
  'fuelType',
  'seatingCapacity',
- 'n_Color',
- 'n_Price',
+ 'Color',
+ 'Price',
  'Currency',
  'addressLocality',
  'addressRegion']
 
-PRICE_THRESHOLD = 1000
-CURRENCY_ALLOWED = ["THB"]
-ENGINE_CAPACITY_THRESHOLD = 0.0
-
 #%% Define Function
-
 def check_and_create_directory(directory_path):
     if not os.path.exists(directory_path):
         os.makedirs(directory_path)
@@ -113,28 +107,45 @@ def load_selected_path():
     return None
 
 def search_for_file_path ():
-    prev_selected_path = load_selected_path()
-    root = tk.Tk()
-    root.withdraw() #use to hide tkinter window
-    currdir = os.getcwd()
-    tempdir = filedialog.askdirectory(parent=root, initialdir=prev_selected_path, title='Please select a directory')
-    if len(tempdir) > 0:
-        print ("Path: %s" % tempdir)
-    save_selected_path(tempdir)
-    return tempdir
+    try:
+        prev_selected_path = load_selected_path()
+        root = tk.Tk()
+        root.withdraw() # use to hide tkinter window
+        tempdir = filedialog.askdirectory(parent=root, initialdir=prev_selected_path, 
+                                          title='Please select directory of Master file')
+        if len(tempdir) > 0:
+            print("Path: %s" % tempdir)
+        save_selected_path(tempdir)
+        return tempdir
+    except Exception as e:
+        print("An error occurred while selecting the directory. Please ensure it's a valid directory.")
+        print(str(e))
+        return None
 
-def calculate_price_statistics(df, lst_group, price_column='n_Price'):
+def calculate_price_statistics(df, lst_group, price_column='Price'):
     # Define a custom aggregation function for price difference
     def price_difference(x):
         return x.max() - x.min()
-    # Group the DataFrame and calculate count, mean, min, max, and price differences
+    # Define a custom aggregation function for mode
+    def mode(x):
+        mode_series = x.mode()
+        # If there's only one mode, return it. Otherwise, return the entire series as a list.
+        if len(mode_series) == 1:
+            return mode_series.iloc[0]
+        else:
+            return mode_series.tolist()
+
+    # Group the DataFrame and calculate count, mean, min, max, price differences, and mode
     agg_functions = {
-        'Count': ('size'),
-        'Mean_Price': ('mean'),
-        'Min_Price': ('min'),
-        'Max_Price': ('max'),
-        'Diff_Price': (price_difference)
+        'Count': 'size',
+        'Mean_Price': 'mean',
+        'Median_Price': 'median',
+        'Mode_Price': mode,
+        'Min_Price': 'min',
+        'Max_Price': 'max',
+        'Diff_Price': price_difference
     }
+
     df_result = df.groupby(lst_group)[price_column].agg(**agg_functions).reset_index()
     df_result.columns = lst_group + list(agg_functions.keys())
     return df_result
@@ -149,18 +160,17 @@ print(date_time)
 print('**************** Data Loading **********************')
 root = search_for_file_path()
 ls_path = [os.path.join(path, name) 
-           for path, subdirs, files in os.walk(root) 
-           for name in files if name.endswith(".csv")]
+             for path, subdirs, files in os.walk(root) 
+             for name in files if name.endswith(".csv")]
+print(f'File Number: {len(ls_path)}')
+print('**************************************')
 
-df_noclean = pd.concat([pd.read_csv(x) for x in ls_path])
-print(f'Loaded {df_noclean.shape[0]} rows of data.')
-print('***************************************************')
 # Load to dataframe
 df_csv = [pd.read_csv(x) for x in ls_path]
 df_noclean = pd.concat(df_csv)
 
 # Drop colunm in dataframe and change column name
-df_drop = df_noclean.drop(columns=col_drop)
+df_drop = df_noclean.drop(columns= col_drop)
 df_drop.columns = col_name
 
 #Save path setup
@@ -176,13 +186,14 @@ print(f'Raw Data Amount: {df_drop.shape[0]} rows : {df_drop.shape[1]} columns')
 
 #%% Data Extraction to important features
 df_extract= df_drop
-# Columns to consider for duplicate detection (exclude "ignore_column")
 columns_to_check = df_extract.columns.difference(['PageNo', 'Position'])
 # Count duplicate rows based on the selected columns
 duplicate_count = df_extract.duplicated(subset=columns_to_check).sum()
 print("Total duplicate rows:", duplicate_count)
 # Drop duplicated
-df_extract = df_extract.drop_duplicates(subset=['PageNo', 'Position'])
+# Columns to consider for duplicate detection (exclude "ignore_column")
+columns_to_consider = [col for col in df_extract.columns if col not in ['PageNo', 'Position']]
+df_extract = df_extract.drop_duplicates(subset=columns_to_consider)
 # Data list to extract data from web scraping 
 ls_WheelDrive = ['FWD' , 'RWD', '4WD' , 'AWD' ]
 # Fuel pairing list
@@ -190,28 +201,28 @@ ls_oldFuel = list(df_extract['fuelType'].unique())
 ls_newFuel = ['ดีเซล', 'เบนซิน', 'เบนซิน', 'ไฟฟ้า', 'Hybrid', 'เบนซิน + CNG/NGV']
 
 # Extract data from description column
-df_extract['n_Year'] = df_extract['Name'].str.extract(r'(\d{4})')
+df_extract['Year'] = df_extract['Name'].str.extract(r'(\d{4})')
 df_extract['Gear_Type']  = df_extract['Name'].str.extract(pat = r'([AM]T)')
 # Replace data with a specific value
 df_extract['Description_2'] = df_extract['Description'].str.replace('xxx', '000')
 df_extract['Mile_km']  = df_extract['Description_2'].str.extract(r'(\d{1,3}(?:,\d{3}\s*)km)')
 df_extract['Mile_km'] = df_extract['Mile_km'].str.replace('km', '')
-df_extract['Color'] = df_extract['n_Color'].str.replace('สี', '')
+df_extract['Color'] = df_extract['Color'].str.replace('สี', '')
 df_extract['Gear'] = df_extract['Gear_Type'].str.replace('T', '')
 #Engine Capacity
 df_extract['CC'] = df_extract['Name'].str.extract(r'(\d+\.\d+)')
-df_extract['n_WheelDrive'] = df_extract['Name'].str.extract("(" + "|".join(ls_WheelDrive) +")", expand=False)
-df_extract['n_WheelDrive'] = df_extract['n_WheelDrive'].str.upper()
+df_extract['WheelDrive'] = df_extract['Name'].str.extract("(" + "|".join(ls_WheelDrive) +")", expand=False)
+df_extract['WheelDrive'] = df_extract['WheelDrive'].str.upper()
 df_extract['Fuel'] = df_extract['fuelType'].replace(ls_oldFuel, ls_newFuel)
 # Replace the matched pattern with an empty string in the 'Car Model' column
 df_extract['Tmpsub_Model'] = df_extract['Name'].str.replace(r'\(ปี \d{2}-\d{2}\)', '')
 df_extract['Tmpsub_Model'] = df_extract['Tmpsub_Model'].str.extract(r'(\d+\.\d+\s.*)')
 df_extract['Gear_Type'] = df_extract['Gear_Type'].astype(str)
-df_extract['n_CarTypes'] = df_extract['n_CarTypes'].astype(str)
-df_extract['n_WheelDrive'] = df_extract['n_WheelDrive'].astype(str)
+df_extract['CarTypes'] = df_extract['CarTypes'].astype(str)
+df_extract['WheelDrive'] = df_extract['WheelDrive'].astype(str)
 df_extract['Tmpsub_Model'] = df_extract['Tmpsub_Model'].astype(str)
-df_extract['sub_Model'] = df_extract.apply(lambda row: row['Tmpsub_Model'].replace(row['Gear_Type'], '').replace(row['n_CarTypes'], '').replace(row['n_WheelDrive'], ''), axis=1)
-df_extract['sub_Model'] = df_extract['sub_Model'] .str.replace(r'  ', ' ')
+df_extract['SubModel'] = df_extract.apply(lambda row: row['Tmpsub_Model'].replace(row['Gear_Type'], '').replace(row['CarTypes'], '').replace(row['WheelDrive'], ''), axis=1)
+df_extract['SubModel'] = df_extract['SubModel'] .str.replace(r'  ', ' ')
 # Remove non-numeric characters (comma) and convert column A to float
 df_extract['Mile_km'] = df_extract['Mile_km'].str.replace(',', '').astype(float)
 # Determine color to favor( flag = 1) ['ขาว', 'ดำ'] color
@@ -220,12 +231,12 @@ df_extract['Color_flg'] = df_extract['Color'].map(color_flag)
 #%% Data Cleaning 
 # Determine Threshold to exclude data 
 # Explore from data One2Car
-Th_price = 1000 
+Th_price = 3000 
 Th_currency = ["THB"]
 Th_cc = 0.0
 
 # Exculde Data by Threshold
-df_cleaned = df_extract[df_extract['n_Price'] >= Th_price]
+df_cleaned = df_extract[df_extract['Price'] >= Th_price]
 df_cleaned = df_cleaned[df_cleaned['Currency'].isin(Th_currency)] 
 df_cleaned = df_cleaned[df_cleaned['CC'].astype(float) > Th_cc] 
 print(f'Number of All Data : {df_extract.shape[0]}')
@@ -241,69 +252,14 @@ save_path_target = f"03_DataSave/{date_time}_webone2car_final_cleaned.csv"
 df_cleaned.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
 
 #%% Pricing Data Range
-def select_columns_for_grouping(additional_columns=[]):
-    """
-    Create a GUI to select columns, and return a list of selected columns when the 'Add & Close' button is clicked.
-    
-    Params:
-    - additional_columns: A list of additional columns to be added to the checkbox GUI.
-    
-    Returns:
-    - A list of selected columns.
-    """
-    selected_columns = []
-
-    def add_to_list_and_close():
-        for var, col in zip(checkboxes_vars, columns_for_groupby):
-            if var.get():
-                selected_columns.append(col)
-        root.destroy()
-
-    root = tk.Tk()
-    root.title("Select Columns")
-
-    # Original list of columns
-    columns_for_groupby = ['Brand', 'Model', 'sub_Model', 'n_Year', 'Fuel', 'Gear']
-    # Combine the original list with additional columns
-    columns_for_groupby.extend(additional_columns)
-
-    frame = ttk.Frame(root)
-    frame.pack(padx=10, pady=10, expand=True, fill=tk.BOTH)
-
-    canvas = tk.Canvas(frame)
-    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-    scrollable_frame = ttk.Frame(canvas)
-    canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-
-    checkboxes_vars = []
-    for col in columns_for_groupby:
-        var = tk.IntVar()
-        chk = ttk.Checkbutton(scrollable_frame, text=col, variable=var)
-        chk.pack(anchor="w")
-        checkboxes_vars.append(var)
-
-    btn_add_close = ttk.Button(root, text="Add & Close", command=add_to_list_and_close)
-    btn_add_close.pack(pady=10)
-
-    root.mainloop()
-    return selected_columns
-
-lst_group = select_columns_for_grouping()
-print(lst_group)
+lst_group = ['Brand', 'Model','SubModel', 'Year','Fuel']
+# lst_group2 = ['Brand', 'Model','sub_Model', 'Year','Fuel', 'Gear']
 
 # Group the DataFrame and calculate count, min, and max values
 df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
 
-#Save Data Pricing List from One2Car
-save_path_target = f"03_DataSave/{date_time}_webone2car_Final.csv"
-df_price_o2c.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
-
-# Group the DataFrame and calculate count, min, and max values
-df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
+# col_name2 = ['Brand', 'Model','sub_Model', 'Year', 'Gear','Fuel']
+# df_price_o2c.columns = col_name2
 
 #Save Data Pricing List from One2Car
 save_path_target = f"03_DataSave/{date_time}_webone2car_Final.csv"
