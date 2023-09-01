@@ -4,6 +4,7 @@ import numpy as np
 import time
 import threading
 import os
+import re
 import tkinter as tk
 import warnings
 warnings.filterwarnings("ignore") # Ignore all warnings
@@ -33,12 +34,18 @@ def load_selected_path():
             return file.read()
     return None
 
+def check_and_create_directory(directory_path):
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
+        print(f"Directory '{directory_path}' created.")
+    else:
+        print(f"Directory '{directory_path}' already exists.")
+
 def search_for_file_path():
     try:
         prev_selected_path = load_selected_path()
         root = tk.Tk()
         root.withdraw() # use to hide tkinter window
-        currdir = os.getcwd()
         tempdir = filedialog.askdirectory(parent=root, initialdir=prev_selected_path, 
                                           title='Please select directory of Master file')
         if len(tempdir) > 0:
@@ -123,12 +130,6 @@ def create_unique_brands_dataframe(dataframe, column_names, new_column_suffixes,
     return pd.DataFrame(unique_data)
 
 def process_dataframes_and_print(df_list, col_lists, suffix_lists, prefix_lists):
-    """
-    Parameters:
-    - df_list: List of source dataframes.
-    - col_lists: List of lists of columns from which to extract unique values.
-    - suffix_lists: List of lists of suffixes to append to the new dataframe's column names.
-    """
     if not (len(df_list) == len(col_lists) == len(suffix_lists) == len(prefix_lists)):
         raise ValueError("All input lists should have the same length.")
     
@@ -153,7 +154,8 @@ def save_master_list_to_csv(master_df, category, save_path_base, current_date_ti
         save_path_target = f"Output/{current_date_time}_{namefile}.csv"
     
     full_save_path = os.path.join(save_path_base, save_path_target)
-
+    path_target = os.path.dirname(full_save_path)
+    check_and_create_directory(path_target)
     master_df.to_csv(full_save_path, index=False, encoding='utf-8-sig')
     
     return full_save_path
@@ -186,7 +188,7 @@ def main():
 
         now = datetime.now()
         date_time = now.strftime("%Y%m%d")
-        save_path = os.path.dirname(os.path.dirname(root))
+        save_path = os.path.dirname(os.path.dirname(os.path.dirname(root)))
         # print()
 
         # Brands
@@ -241,12 +243,12 @@ def main():
 #%% 
 # Function Calculated
 def calculate_price(df, lst_group):
-    # Group the DataFrame and calculate count, mean, min, max, and price differences
+
     agg_functions = {
         'Count': 'sum',  # Assuming Count is a numeric field you want to sum
-        'Mean_Price': 'mean',
+        'Mean_Price': lambda x: int(x.median()),
         'Min_Price': 'min',
-        'Max_Price': 'max',
+        'Max_Price': lambda x: int(x.median()),
     }
 
     df_result = df.groupby(lst_group).agg(agg_functions).reset_index()  
@@ -259,13 +261,21 @@ def calculate_price(df, lst_group):
     df_result.columns = [col[0] if isinstance(col, tuple) and col[1] == '' else col for col in df_result.columns.values]
     
     return df_result
-# Mapping with text analytics
+
 def generate_keys(df, columns_tokens):
     # Create the 'Keys' column based on the number of selected columns
-    df['Keys'] = df[columns_tokens[0]]
+    df['Keys'] = df[columns_tokens[0]].str.upper()
     for col in columns_tokens[1:]:
-        df['Keys'] += ' ' + df[col]
+        df['Keys'] += ' ' + df[col].str.upper()
+    df['Keys'] = df['Keys'].str.replace(r'[\u0E00-\u0E7F]+', '')# 1. Remove Thai words
+    df['Keys'] = df['Keys'].str.replace(r'\(|\)', '', regex=True).str.strip()# Removing ()
+
+    df['Tokens'] = df['Keys'].apply(generate_tokens)  # Apply generate_tokens directly here
     return df
+
+def generate_tokens(model_name):
+    alphanumeric_pattern = re.compile(r'^[a-zA-Z0-9.]+$')  # Include numbers and period
+    return {word for word in str(model_name).split() if alphanumeric_pattern.match(word)}
 
 #%% Import Data from Database on .CSV file
 if __name__ == "__main__":
@@ -389,11 +399,11 @@ if __name__ == '__main__':
 
 # %%
 now = datetime.now()
-date_time = now.strftime("%Y%m%d")
+date_time = now.strftime("%Y%m%d_%H%M%S")
 root = search_for_file_path()
 save_path = os.path.dirname(root)
 print()
-save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendordata_addedprice" )
+save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_addedprice" )
 
 #%%
 class PriceAdjuster:
@@ -483,4 +493,4 @@ app = PriceAdjuster(root, df)
 root.mainloop()
 
 df_result = app.df
-save_master_list_to_csv(df_result, '', save_path, date_time,"","vendordata_adjustprice" )
+save_master_list_to_csv(df_result, '', save_path, date_time,'',"vendor_adjustprice" )

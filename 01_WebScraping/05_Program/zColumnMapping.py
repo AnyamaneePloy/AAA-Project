@@ -66,7 +66,3 @@ class ColumnMapping(tk.Toplevel):
         self.destroy()
         self.quit()
 
-# Example usage
-if __name__ == "__main__":
-    app = ColumnMapping(["Col1", "Col2", "Col3"], ["A", "B", "C", "D", "E"])
-    app.mainloop()

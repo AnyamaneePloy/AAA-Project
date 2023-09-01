@@ -243,7 +243,7 @@ df_extract['Color_flg'] = df_extract['Color'].map(color_flag)# Determine color t
 #%% Data Cleaning 
 # Determine Threshold to exclude data 
 # Explore from data One2Car
-Th_price = 5000 # based on data
+Th_price = 100000 # based on data
 Th_currency = ["THB"]
 Th_cc = 0.0
 

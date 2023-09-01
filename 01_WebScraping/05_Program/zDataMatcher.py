@@ -71,7 +71,7 @@ class DataMatcher:
         if union_len == 0:
             return 0
         return len(tokens1.intersection(tokens2)) / float(union_len)
-
+    
     # Function to find the best matching row
     def find_best_match(self, row, df_target, output_cols):
         tokens = row['Tokens']
