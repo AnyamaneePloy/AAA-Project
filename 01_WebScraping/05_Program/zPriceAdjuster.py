@@ -29,7 +29,7 @@ class PriceAdjuster:
         self.btn_apply = ttk.Button(self.root, text="Apply Adjustment", command=self.apply_adjustment)
         self.btn_apply.pack(pady=10)
 
-        self.btn_quit = ttk.Button(self.root, text="Quit", command=self.root.quit)
+        self.btn_quit = ttk.Button(self.root, text="Finished", command=self.root.quit)
         self.btn_quit.pack(pady=20)
 
     def create_filters(self):

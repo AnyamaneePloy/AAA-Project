@@ -1,5 +1,6 @@
 import tkinter as tk
 import pandas as pd
+import re
 from tkinter import ttk, messagebox
 
 class DataMatcher:
@@ -9,7 +10,7 @@ class DataMatcher:
         self.columns_keys = columns_keys
         
         self.root = tk.Tk()
-        self.root.title("Data Matcher")
+        self.root.title("Data Matching")
         self.root.geometry("500x500")
         
         self.setup_ui()
@@ -18,15 +19,15 @@ class DataMatcher:
         label = tk.Label(self.root, text="Click to Match DataFrames")
         label.pack(pady=20)
         
-        self.btn_vendor = ttk.Button(self.root, text="Preview Vendor DataFrame", 
+        self.btn_vendor = ttk.Button(self.root, text="Preview Seller Data", 
                                      command=self.display_vendor_dataframe)
         self.btn_vendor.pack(pady=10)
 
-        self.btn_dms = ttk.Button(self.root, text="Preview DMS DataFrame", 
+        self.btn_dms = ttk.Button(self.root, text="Preview DMS Data", 
                                   command=self.display_dms_dataframe)
         self.btn_dms.pack(pady=10)
 
-        self.btn_submit = ttk.Button(self.root, text="Start Matching", 
+        self.btn_submit = ttk.Button(self.root, text="Click to Match Price Data", 
                                      command=self.on_submit)
         self.btn_submit.pack(pady=20)
 
@@ -63,15 +64,19 @@ class DataMatcher:
     def tokenize_model(self, model_name):
         if isinstance(model_name, float):  # Check if it's NaN
             return set()
+        model_name = re.sub(r'[^\w\s]', '', model_name).upper()
         return set([token for token in model_name.split() if token.isalnum()])
+
 
     # Function to compute similarity between two token sets
     def compute_similarity(self, tokens1, tokens2):
+        intersection_len = len(tokens1.intersection(tokens2))
         union_len = len(tokens1.union(tokens2))
         if union_len == 0:
             return 0
-        return len(tokens1.intersection(tokens2)) / float(union_len)
-
+        # Use Jaccard similarity for set-based token similarity
+        return intersection_len / float(union_len)
+    
     # Function to find the best matching row
     def find_best_match(self, row, df_target, output_cols):
         tokens = row['Tokens']
@@ -98,6 +103,7 @@ class DataMatcher:
             
         self.root.destroy()
         self.root.quit()
+
 
     def on_submit(self):
         selected_columns = ["Keys"]

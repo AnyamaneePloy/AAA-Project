@@ -4,6 +4,7 @@ import numpy as np
 import time
 import threading
 import os
+import re
 import tkinter as tk
 import warnings
 warnings.filterwarnings("ignore") # Ignore all warnings
@@ -19,7 +20,7 @@ from zColumnMapping import ColumnMapping
 from zColumnSelector import ColumnSelector
 from zDataMatcher import DataMatcher
 from zDataMerger import DataMerger
-# from zPriceAdjuster import PriceAdjuster
+from zPriceAdjuster import PriceAdjuster
 
 #%% Folder and File Selection
 # Select Folder Function
@@ -33,16 +34,25 @@ def load_selected_path():
             return file.read()
     return None
 
+def check_and_create_directory(directory_path):
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
+        print(f"Directory '{directory_path}' created.")
+    else:
+        print(f"Directory '{directory_path}' already exists.")
+
 def search_for_file_path():
     try:
         prev_selected_path = load_selected_path()
         root = tk.Tk()
         root.withdraw() # use to hide tkinter window
-        currdir = os.getcwd()
         tempdir = filedialog.askdirectory(parent=root, initialdir=prev_selected_path, 
                                           title='Please select directory of Master file')
         if len(tempdir) > 0:
             print("Path: %s" % tempdir)
+        
+        if not tempdir:
+            return None
         save_selected_path(tempdir)
         return tempdir
     except Exception as e:
@@ -123,12 +133,6 @@ def create_unique_brands_dataframe(dataframe, column_names, new_column_suffixes,
     return pd.DataFrame(unique_data)
 
 def process_dataframes_and_print(df_list, col_lists, suffix_lists, prefix_lists):
-    """
-    Parameters:
-    - df_list: List of source dataframes.
-    - col_lists: List of lists of columns from which to extract unique values.
-    - suffix_lists: List of lists of suffixes to append to the new dataframe's column names.
-    """
     if not (len(df_list) == len(col_lists) == len(suffix_lists) == len(prefix_lists)):
         raise ValueError("All input lists should have the same length.")
     
@@ -148,12 +152,13 @@ def save_master_list_to_csv(master_df, category, save_path_base, current_date_ti
     Save a provided master dataframe to a CSV file.
     """
     if datatype == "Master":
-        save_path_target = f"Input/02_Master/{category}_MasterLst.csv"
+        save_path_target = f"Input/04_Master/{category}_MasterLst.csv"
     else:
         save_path_target = f"Output/{current_date_time}_{namefile}.csv"
     
     full_save_path = os.path.join(save_path_base, save_path_target)
-
+    path_target = os.path.dirname(full_save_path)
+    check_and_create_directory(path_target)
     master_df.to_csv(full_save_path, index=False, encoding='utf-8-sig')
     
     return full_save_path
@@ -168,6 +173,8 @@ def main():
     while True:  # Loop until valid directory is selected
         # Load Data
         root = search_for_file_path()
+        if root is None:
+            break
         ls_path = [os.path.join(path, name) 
                  for path, subdirs, files in os.walk(root) 
                  for name in files if name.endswith(".csv")]
@@ -186,7 +193,7 @@ def main():
 
         now = datetime.now()
         date_time = now.strftime("%Y%m%d")
-        save_path = os.path.dirname(os.path.dirname(root))
+        save_path = os.path.dirname(os.path.dirname(os.path.dirname(root)))
         # print()
 
         # Brands
@@ -241,12 +248,12 @@ def main():
 #%% 
 # Function Calculated
 def calculate_price(df, lst_group):
-    # Group the DataFrame and calculate count, mean, min, max, and price differences
+
     agg_functions = {
         'Count': 'sum',  # Assuming Count is a numeric field you want to sum
-        'Mean_Price': 'mean',
+        'Mean_Price': lambda x: int(x.median()),
         'Min_Price': 'min',
-        'Max_Price': 'max',
+        'Max_Price': lambda x: int(x.median()),
     }
 
     df_result = df.groupby(lst_group).agg(agg_functions).reset_index()  
@@ -259,13 +266,21 @@ def calculate_price(df, lst_group):
     df_result.columns = [col[0] if isinstance(col, tuple) and col[1] == '' else col for col in df_result.columns.values]
     
     return df_result
-# Mapping with text analytics
+
 def generate_keys(df, columns_tokens):
     # Create the 'Keys' column based on the number of selected columns
     df['Keys'] = df[columns_tokens[0]]
     for col in columns_tokens[1:]:
-        df['Keys'] += ' ' + df[col]
+        df['Keys'] += ' ' + df[col].str.upper()
+    df['Keys'] = df['Keys'].str.replace(r'[\u0E00-\u0E7F]+', '')# 1. Remove Thai words
+    df['Keys'] = df['Keys'].str.replace(r'\(|\)', '', regex=True).str.strip()# Removing '()'
+    
+    df['Tokens'] = df['Keys'].apply(generate_tokens)  # Apply generate_tokens directly here
     return df
+
+def generate_tokens(model_name):
+    alphanumeric_pattern = re.compile(r'^[a-zA-Z0-9.-]+$')  # Include numbers, period, and hyphen
+    return {word for word in str(model_name).split() if alphanumeric_pattern.match(word)}
 
 #%% Import Data from Database on .CSV file
 if __name__ == "__main__":
@@ -301,9 +316,11 @@ df_price['ModelCode'] = tuple_model.map(result_ModelCode2)
 # Submodel
 tuple_submodel = df_price[['BrandCode', 'ModelCode', 'SubModel']].apply(lambda x: (x[0], x[1], str(x[2]).upper()), axis=1)
 df_price['SubModelCode'] = tuple_submodel.map(result_SubModelCode2)
+# Convert only strings in the DataFrame to uppercase
+df_price = df_price.applymap(lambda s: s.upper() if isinstance(s, str) else s)
 
 #%% One2Car Data Processing
-app_o2cprice = ColumnSelector(df_price, "One2Car DATA Window" )
+app_o2cprice = ColumnSelector(df_price, dialog_title="Select Column to Group Price from One2Car DATA")
 app_o2cprice.select_columns(dialog_title="Select Column to Group Price from One2Car DATA")
 app_o2cprice.mainloop()
 lst_group = app_o2cprice.selected_columns
@@ -331,38 +348,67 @@ for file in selected_files:
 df_vendor_curr = df_vendor[0]
 
 # Select column 
-app_vendor = ColumnSelector(df_vendor_curr, "Leasing or Vendor DATA Window" )
+app_vendor = ColumnSelector(df_vendor_curr, dialog_title="Select Column to Mapping from Leasing or Vendor DATA" )
 app_vendor.select_columns(dialog_title="Select Column to Mapping from Leasing or Vendor DATA")
 app_vendor.mainloop()
 # print("Mapping Columns:", app_vendor.selected_columns)
-columns_to_keep = app_vendor.selected_columns
-df_vendor_filt = df_vendor_curr[columns_to_keep]
-# df_vendor_filt.to_csv('df_vendor_filt.csv')
-columns = ["Brand", "Model", "SubModel", "Year", "Gear", "Color", "CC", "Mile", "Grade"]
 
-if __name__ == "__main__":
-    app_mapp = ColumnMapping(columns_to_keep,columns)
+while True:    
+    
+    columns_to_keep = app_vendor.selected_columns
+    df_vendor_filt = df_vendor_curr[columns_to_keep]
+    # df_vendor_filt.to_csv('df_vendor_filt.csv')
+
+    #%% Mapping with text analytics
+    columns = ["Brand", "Model", "SubModel", "Year", "Gear", "Color", "CC", "Mile", "Grade"]
+    if __name__ == "__main__":
+        app_mapp = ColumnMapping(columns_to_keep,columns)
+        try:
+            app_mapp.mainloop()
+        except AttributeError:
+            pass
+    tp_mapping = app_mapp.mappings
+
+    df_vendor_filt_tmp = df_vendor_filt
+    df_vendor_filt_tmp.rename(columns=tp_mapping , inplace=True)
+    # Select Column to Mapping Text Data
+    app_key = ColumnSelector(df_vendor_filt_tmp, dialog_title="Select KEYS Column for Text Mapping from Vendor")
+    app_key.select_columns(dialog_title="Select KEYS Column for Text Mapping from Vendor")
+    app_key.mainloop()
+    columns_tokens = app_key.selected_columns
+
     try:
-        app_mapp.mainloop()
-    except AttributeError:
-        pass
-tp_mapping = app_mapp.mappings
-df_vendor_filt.rename(columns=tp_mapping , inplace=True)
+        if not columns_tokens:
+            raise ValueError("No columns were selected.")
+        
+        df_vendor_filt = generate_keys(df_vendor_filt_tmp, columns_tokens)
+        df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName', 'SubModelName'])
+        
+        # If everything is successful, break out of the loop
+        print("Mapping successful!")
+        break
 
-#%% Mapping with text analytics
-# Select Column to Mapping Text Data
-app_key = ColumnSelector(df_vendor_filt)
-app_key.select_columns(dialog_title="Select KEYS Column for Text Mapping from Vendor")
-app_key.mainloop()
-columns_tokens = app_key.selected_columns
-# print("Mapping Columns:", columns_tokens)
-df_vendor_filt = generate_keys(df_vendor_filt, columns_tokens)
-df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName', 'SubModelName'])
+    except KeyError as ke:
+        # This will catch if one of the columns in columns_tokens doesn't exist in df_vendor_filt or df_DMS.
+        print(f"Error: Column '{ke}' not found in the DataFrame. Try again.")
+        
+    except ValueError as ve:
+        # This will catch the custom exception we raised if no columns were selected.
+        print(f"Error: {ve}. Try again.")
+        
+    except Exception as e:
+        # This will catch any other general exceptions and errors.
+        print(f"An unexpected error occurred: {e}. Try again.")
+    
+    # Optionally, add a way for users to exit the loop
+    choice = input("Do you want to continue? (yes/no): ").strip().lower()
+    if choice == 'no':
+        break
 
 df_dmsprocess = df_DMS
 # Select DMS Column
 while True:
-    app_key2 = ColumnSelector(df_dmsprocess)
+    app_key2 = ColumnSelector(df_dmsprocess, dialog_title="DMS Column Need to Mapping")
     app_key2.select_columns(dialog_title="DMS Column Need to Mapping")
     app_key2.mainloop()
     columns_keys = app_key2.selected_columns
@@ -385,102 +431,72 @@ if __name__ == '__main__':
     root.mainloop()
     df_vendor = app_match.df_vendor_curr
     df_aaprice = app_match.result
+# save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
 
+#%% Adjust Price
+df = df_aaprice
+# Load Adjust Price Data (Add Exception)
+print('**************** Vendor Data Loading **********************')
+selected_files = select_files()
+root = os.path.dirname(selected_files[0])
+print(f'File Number: {len(selected_files)}')
+print('**********************************************************')
+df_adjprice = []
+for file in selected_files:
+    if file.endswith('.csv'):
+        df_tmp = pd.read_csv(file)
+    elif file.endswith('.xlsx'):
+        df_tmp = pd.read_excel(file)
+    else:
+        continue
+    df_adjprice.append(df_tmp)
 
-# %%
+df_adjprice = df_adjprice[0]
+df_adjprice['Priority'] = df_adjprice[['Grade', 'BrandCode', 'ModelCode', 'SubModelCode']].apply(
+    lambda row: sum([1 for item in row if item != '-']), axis=1)
+df['MarketPrice'] = df['Min_Price'].replace('', np.nan).astype(float)
+
+# Function to apply the discount/addition from the master dataframe to the data dataframe
+def apply_discount(row):
+    # If price is NaN, return NaN
+    price = row.get('MarketPrice', None)
+    if pd.isna(price):
+        return np.nan
+
+    # Set conditions based on available columns
+    conditions = [df_adjprice['Grade'] == row.get('Grade', '-')]
+    
+    if 'BrandCode' in df.columns:
+        conditions.append(df_adjprice['BrandCode'].isin(['-', row.get('BrandCode', '-')]))
+    
+    if 'ModelCode' in df.columns:
+        conditions.append(df_adjprice['ModelCode'].isin(['-', row.get('ModelCode', '-')]))
+    
+    if 'SubModelCode' in df.columns:
+        conditions.append(df_adjprice['SubModelCode'].isin(['-', row.get('SubModelCode', '-')]))
+
+    # Build the final mask
+    mask = np.all(conditions, axis=0)
+    
+    matching_rows = df_adjprice[mask].sort_values(by='Priority', ascending=False)
+    
+    if matching_rows.empty:
+        return price
+    
+    # Calculate new price based on the percentage discount/addition
+    discount_addition_percentage = matching_rows.iloc[0]['Discount/Addition'] / 100
+    updated_price = price * (1 + discount_addition_percentage)
+    
+    return updated_price
+    
+df['AdjustedPrice']= df.apply(apply_discount, axis=1)
+df_vendor['AdjustedPrice'] = df.apply(apply_discount, axis=1)
+
+# %% Save File
 now = datetime.now()
-date_time = now.strftime("%Y%m%d")
+date_time = now.strftime("%Y%m%d_%H%M%S")
 root = search_for_file_path()
 save_path = os.path.dirname(root)
-print()
-save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendordata_addedprice" )
 
-#%%
-class PriceAdjuster:
-    def __init__(self, master, df):
-        self.root = master
-        self.df = df.copy()
-        self.df['Adjusted_Price'] = self.df['MarketPrice']
-        
-        self.initUI()
-
-    def initUI(self):
-        self.frame = tk.Frame(self.root)
-        self.frame.pack(fill='both', expand=True)
-
-        self.pt = Table(self.frame, dataframe=self.df)
-        self.pt.show()
-
-        self.create_filters()
-        
-        self.label_adjustment = ttk.Label(self.root, text="Adjustment % (discount: -5, addition: 5):")
-        self.label_adjustment.pack(pady=10)
-
-        self.entry_adjustment = ttk.Entry(self.root)
-        self.entry_adjustment.pack(pady=10)
-
-        self.btn_apply = ttk.Button(self.root, text="Apply Adjustment", command=self.apply_adjustment)
-        self.btn_apply.pack(pady=10)
-
-        self.btn_quit = ttk.Button(self.root, text="Quit", command=self.root.quit)
-        self.btn_quit.pack(pady=20)
-
-    def create_filters(self):
-        self.n_column = tk.StringVar()
-        self.combobox_column = ttk.Combobox(self.root, width=27, textvariable=self.n_column)
-        self.combobox_column.pack(pady=10)
-
-        self.combobox_column['values'] = ['- select column -'] + list(self.df.columns)
-        self.combobox_column.bind("<<ComboboxSelected>>", self.update_values)
-
-        self.n_value = tk.StringVar()
-        self.combobox_value = ttk.Combobox(self.root, width=27, textvariable=self.n_value)
-        self.combobox_value.pack(pady=10)
-        self.combobox_value['values'] = ['- select value -']
-        self.combobox_value.bind("<<ComboboxSelected>>", self.selection)
-
-    def update_values(self, event):
-        selected_column = self.combobox_column.get()
-        unique_values = ['- select value -'] + sorted(self.df[selected_column].unique())
-        self.combobox_value['values'] = unique_values
-        self.combobox_value.current(0)
-
-    def selection(self, event):
-        selected_column = self.combobox_column.get()
-        selected_value = self.combobox_value.get()
-        
-        if selected_column == '- select column -' or selected_value == '- select value -':
-            dfx = self.df
-        else:
-            dfx = self.df[self.df[selected_column] == selected_value]
-        
-        self.pt.model.df = dfx
-        self.pt.redraw()
-
-    def apply_adjustment(self):
-        try:
-            adjustment = float(self.entry_adjustment.get()) / 100
-
-            selected_column = self.combobox_column.get()
-            selected_value = self.combobox_value.get()
-            
-            if selected_column == '- select column -' or selected_value == '- select value -':
-                dfx = self.df
-            else:
-                dfx = self.df[self.df[selected_column] == selected_value]
-
-            dfx['Adjusted_Price'] = dfx['Adjusted_Price'] * (1 + adjustment)
-            self.df.update(dfx)
-
-            self.pt.model.df = dfx
-            self.pt.redraw()
-        except ValueError:
-            messagebox.showerror("Error", "Please enter a valid adjustment percentage.")
-# Assuming df_vendor is loaded and has a 'MarketPrice' column
-root = tk.Tk()
-df = df_vendor
-app = PriceAdjuster(root, df)
-root.mainloop()
-
-df_result = app.df
-save_master_list_to_csv(df_result, '', save_path, date_time,"","vendordata_adjustprice" )
+df_result = df_vendor
+save_master_list_to_csv(df_result, '', save_path, date_time,'',"vendor_estprice" )

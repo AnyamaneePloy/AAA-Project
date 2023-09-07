@@ -2,16 +2,14 @@ import tkinter as tk
 from tkinter import ttk
 # Column Selection Class
 class ColumnSelector(tk.Tk):
-    def __init__(self, df, Title = "Column Selector Main Window"):
+    def __init__(self, df, dialog_title = "Column Selector Main Window"):
         super().__init__()
-        
         self.geometry("500x500")
-        self.title(Title)  # Title for the main window
+        self.title(dialog_title)  # Title for the main window
         self.df = df
         self.selected_columns = []
-        
         ttk.Button(self, text="Select Columns", command=self.select_columns).pack(pady=20)
-
+        
     def select_columns(self, dialog_title="Column Selection Dialog"):
         dialog = tk.Toplevel(self)
         dialog.title(dialog_title)

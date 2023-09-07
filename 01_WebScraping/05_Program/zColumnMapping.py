@@ -6,7 +6,7 @@ class ColumnMapping(tk.Toplevel):
     def __init__(self, columns, columns_mapp):
         super().__init__()
 
-        self.geometry("400x400")
+        self.geometry("500x500")
         self.title("Column Mapping")
 
         self.columns = columns
@@ -33,7 +33,7 @@ class ColumnMapping(tk.Toplevel):
         self.new_name_dropdown.pack(pady=10)
 
         ttk.Button(self.right_panel, text="Map", command=self.map_column).pack(pady=10)
-        ttk.Button(self.right_panel, text="Close", command=self.close_app).pack(pady=10)
+        ttk.Button(self.right_panel, text="Next", command=self.close_app).pack(pady=10)
 
         # Display mappings using Treeview
         self.mapping_tree = ttk.Treeview(self.right_panel, columns=('Original', 'Mapped'), show='headings')
@@ -66,7 +66,3 @@ class ColumnMapping(tk.Toplevel):
         self.destroy()
         self.quit()
 
-# Example usage
-if __name__ == "__main__":
-    app = ColumnMapping(["Col1", "Col2", "Col3"], ["A", "B", "C", "D", "E"])
-    app.mainloop()
