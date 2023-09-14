@@ -77,7 +77,8 @@ col_name = ['PageNo',
  'Price',
  'Currency',
  'addressLocality',
- 'addressRegion']
+ 'addressRegion',
+ 'FolderName']
 
 #%% Define Function
 def check_and_create_directory(directory_path):
@@ -166,11 +167,39 @@ print('**************************************')
 
 # Load to dataframe
 df_csv = [pd.read_csv(x) for x in ls_path]
-df_noclean = pd.concat(df_csv)
+df_noclean = []
+# Add folder name column to each dataframe in df_csv
+for idx, df in enumerate(df_csv):
+    folder_name = os.path.basename(os.path.dirname(os.path.dirname(ls_path[idx])))
+    df['folder_name'] = folder_name
+    df_noclean.append(df)
+
+df_noclean = pd.concat(df_noclean)
+grouped_counts = df_noclean.groupby('folder_name').size().reset_index(name='counts')
+print(grouped_counts)
 
 # Drop colunm in dataframe and change column name
 df_drop = df_noclean.drop(columns= col_drop)
 df_drop.columns = col_name
+
+df_noclean = df_drop.sort_values(by='FolderName')
+cols_to_exclude = ['FolderName', 'PageNo', 'Position']# Exclude 'folder_name', 'PageNo', and 'Position' when checking for duplicates
+cols_for_duplicate_check = [col for col in df_noclean.columns if col not in cols_to_exclude]
+
+results = []
+previous_group_data = None
+# Iterate over each folder
+for folder, group in df_noclean.groupby('FolderName'):
+    if previous_group_data is not None:
+        merged = pd.concat([previous_group_data, group]).reset_index(drop=True)  # reset index here
+        duplicates_in_group = merged[merged.duplicated(subset=cols_for_duplicate_check)]
+        results.append({'FolderName': folder, 'duplicate_counts': len(duplicates_in_group)})
+        previous_group_data = merged
+    else:
+        previous_group_data = group
+# Convert results to DataFrame
+df_results = pd.DataFrame(results)
+print(df_results)
 
 #Save path setup
 save_path = os.path.dirname(os.path.dirname(root))
@@ -185,13 +214,13 @@ print(f'Raw Data Amount: {df_drop.shape[0]} rows : {df_drop.shape[1]} columns')
 
 #%% Data Extraction to important features
 df_extract= df_drop
-columns_to_check = df_extract.columns.difference(['PageNo', 'Position'])
+columns_to_check = df_extract.columns.difference(['PageNo', 'Position', 'FolderName'])
 # Count duplicate rows based on the selected columns
 duplicate_count = df_extract.duplicated(subset=columns_to_check).sum()
 print("Total duplicate rows:", duplicate_count)
 # Drop duplicated
 # Columns to consider for duplicate detection (exclude "ignore_column")
-columns_to_consider = [col for col in df_extract.columns if col not in ['PageNo', 'Position']]
+columns_to_consider = [col for col in df_extract.columns if col not in ['PageNo', 'Position','FolderName']]
 df_extract = df_extract.drop_duplicates(subset=columns_to_consider)
 # Data list to extract data from web scraping 
 ls_WheelDrive = ['FWD' , 'RWD', '4WD' , 'AWD' ]
@@ -207,7 +236,6 @@ df_extract['Description_2'] = df_extract['Description'].str.replace('xxx', '000'
 df_extract['Mile_km']  = df_extract['Description_2'].str.extract(r'(\d{1,3}(?:,\d{3}\s*)km)')
 df_extract['Mile_km'] = df_extract['Mile_km'].str.replace('km', '')
 df_extract['Color'] = df_extract['Color'].str.replace('สี', '')
-df_extract['Gear'] = df_extract['Gear_Type'].str.replace('T', '')
 #Engine Capacity
 df_extract['CC'] = df_extract['Name'].str.extract(r'(\d+\.\d+)')
 df_extract['WheelDrive'] = df_extract['Name'].str.extract("(" + "|".join(ls_WheelDrive) +")", expand=False)
@@ -217,6 +245,7 @@ df_extract['Fuel'] = df_extract['fuelType'].replace(ls_oldFuel, ls_newFuel)
 df_extract['Tmpsub_Model'] = df_extract['Name'].str.replace(r'\(ปี \d{2}-\d{2}\)', '')
 df_extract['Tmpsub_Model'] = df_extract['Tmpsub_Model'].str.extract(r'(\d+\.\d+\s.*)')
 df_extract['Gear_Type'] = df_extract['Gear_Type'].astype(str)
+df_extract['Gear'] = df_extract['Gear_Type']
 df_extract['CarTypes'] = df_extract['CarTypes'].astype(str)
 df_extract['WheelDrive'] = df_extract['WheelDrive'].astype(str)
 df_extract['Tmpsub_Model'] = df_extract['Tmpsub_Model'].astype(str)
@@ -241,7 +270,6 @@ df_extract['Mile_km'] = df_extract['Mile_km'].str.replace(',', '').astype(float)
 df_extract['Color_flg'] = df_extract['Color'].map(color_flag)# Determine color to favor( flag = 1) ['ขาว', 'ดำ'] color
 
 #%% Data Cleaning 
-# Determine Threshold to exclude data 
 # Explore from data One2Car
 Th_price = 100000 # based on data
 Th_currency = ["THB"]
@@ -268,9 +296,6 @@ lst_group = ['Brand', 'Model', 'SubModel', 'Year', 'Gear', 'Fuel', 'Color_flg', 
 
 # Group the DataFrame and calculate count, min, and max values
 df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
-
-# col_name2 = ['Brand', 'Model','sub_Model', 'Year', 'Gear','Fuel']
-# df_price_o2c.columns = col_name2
 
 #Save Data Pricing List from One2Car
 save_path_target = f"03_DataSave/03_One2Car_{date_time}.csv"
