@@ -50,7 +50,7 @@ def search_for_file_path():
         root = tk.Tk()
         root.withdraw() # use to hide tkinter window
         tempdir = filedialog.askdirectory(parent=root, initialdir=prev_selected_path, 
-                                          title='Please select directory of Master file')
+                                          title='Please select directory to save file')
         if len(tempdir) > 0:
             print("Path: %s" % tempdir)
         save_selected_path(tempdir)

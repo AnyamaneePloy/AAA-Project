@@ -121,15 +121,23 @@ class DataMerger:
             print( self.result.shape[0])
 
             cols_to_drop = ['Keys', 'Tokens', 'Score']
+<<<<<<< HEAD
             df_aaprice =  self.result.drop(columns=cols_to_drop)
             df_vendor = pd.DataFrame(self.df_vendor_curr)
             df_vendor['MarketPrice'] = df_aaprice['Min_Price']
             df_vendor['AdjustedPrice'] = df_aaprice['Min_Price']
             df_vendor['PriceStatus'] = df_aaprice['PriceStatus']
+=======
+            self.df_aaprice =  self.result.drop(columns=cols_to_drop)
+            self.df_vendor = pd.DataFrame(self.df_vendor_curr)
+            self.df_vendor['MarketPrice'] = self.df_aaprice['Min_Price']
+            self.df_vendor['AdjustedPrice'] = self.df_aaprice['Min_Price']
+            self.df_vendor['PriceStatus'] = self.df_aaprice['PriceStatus']
+>>>>>>> Development
             
             # Use a Toplevel widget to display outputs
             new_window = tk.Toplevel(self.root)
-            output_label = tk.Label(new_window, text=f"Selected Columns: {cols_to_use}\n\nMerged Data:\n{df_vendor}")
+            output_label = tk.Label(new_window, text=f"Selected Columns: {cols_to_use}\n\nMerged Data:\n{self.df_vendor}")
             output_label.pack(pady=20)
             
         except Exception as e:

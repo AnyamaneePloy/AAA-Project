@@ -9,6 +9,7 @@ import tkinter as tk
 import warnings
 warnings.filterwarnings("ignore") # Ignore all warnings
 
+from itertools import combinations
 from fuzzywuzzy import fuzz as fw_fuzz, process as fw_process
 from rapidfuzz import fuzz, process
 from pandastable import Table
@@ -329,7 +330,7 @@ mapp_price = calculate_price(df_price, lst_group)
 
 #%% Vendor Data Processing
 # Load Vendor Data (Add Exception)
-print('**************** Vendor Data Loading **********************')
+print('**************** Seller Data Loading **********************')
 selected_files = select_files()
 root = os.path.dirname(selected_files[0])
 print(f'File Number: {len(selected_files)}')
@@ -429,9 +430,34 @@ if __name__ == '__main__':
     root = tk.Tk()
     app_match = DataMerger(root, df_vendor_curr, df_vendor_filt, mapp_price)
     root.mainloop()
-    df_vendor = app_match.df_vendor_curr
+    df_vendor = app_match.get_df_vendor() 
     df_aaprice = app_match.result
 # save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
+<<<<<<< HEAD
+=======
+
+#%% Adjust Price
+df = df_aaprice
+# Load Adjust Price Data (Add Exception)
+print('**************** Data to Adjust Price Loading **********************')
+selected_files = select_files()
+root = os.path.dirname(selected_files[0])
+print(f'File Number: {len(selected_files)}')
+print('**********************************************************')
+df_adjprice = []
+for file in selected_files:
+    if file.endswith('.csv'):
+        df_tmp = pd.read_csv(file)
+    elif file.endswith('.xlsx'):
+        df_tmp = pd.read_excel(file)
+    else:
+        continue
+    df_adjprice.append(df_tmp)
+
+df_adjprice = df_adjprice[0]
+df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
+df['MarketPrice'] = df['Min_Price'].replace('', np.nan).astype(float)
+>>>>>>> Development
 
 #%% Adjust Price
 df = df_aaprice
@@ -451,6 +477,7 @@ for file in selected_files:
         continue
     df_adjprice.append(df_tmp)
 
+<<<<<<< HEAD
 df_adjprice = df_adjprice[0]
 df_adjprice['Priority'] = df_adjprice[['Grade', 'BrandCode', 'ModelCode', 'SubModelCode']].apply(
     lambda row: sum([1 for item in row if item != '-']), axis=1)
@@ -491,6 +518,71 @@ def apply_discount(row):
     
 df['AdjustedPrice']= df.apply(apply_discount, axis=1)
 df_vendor['AdjustedPrice'] = df.apply(apply_discount, axis=1)
+=======
+def get_non_nan_columns(df, idx):
+    row = df.loc[idx]
+    return [col for col in df.columns if pd.notna(row[col]) and col != "Discount/Addition"]
+
+# Extract non-NaN columns for each row in the DataFrame and store in a list
+output = [get_non_nan_columns(df_adjprice, idx) for idx in df_adjprice.index]
+
+
+def apply_discounts(df, df_adjprice):
+    # Initializations
+    df['Discount'] = np.nan
+    df['AdjustedPrice'] = df['MarketPrice']
+    df['Matched'] = False  # Column to indicate if a match was found
+    df['MatchedStatus'] = None  
+
+    # Dynamically generate filter_list
+    filter_list = list(set(df_adjprice.columns).intersection(set(df.columns)))
+
+    for idx, main_row in df.iterrows():
+        matched = False
+
+        # Dynamically generate perfect match condition
+        conditions = [df_adjprice[col] == main_row[col] for col in filter_list if col in df.columns]
+        perfect_match_condition = np.logical_and.reduce(conditions, axis=0)
+        perfect_match = df_adjprice[perfect_match_condition]
+        # matchCol = [get_non_nan_columns(perfect_match, idx) for idx in perfect_match.index]
+
+        if not perfect_match.empty:
+            matched = True
+            discount = perfect_match['Discount/Addition'].values[0]
+            matchCol = [get_non_nan_columns(perfect_match, idx) for idx in perfect_match.index]
+
+        # Generate conditions for partial matches
+        for i in range(len(filter_list), 0, -1):
+            if matched: 
+                break
+            for subset in combinations(filter_list, i):  # Consider all combinations of i elements
+                conditions = [df_adjprice[col] == main_row[col] for col in subset]
+                null_conditions = [pd.isnull(df_adjprice[col]) for col in filter_list if col not in subset]
+                all_conditions = conditions + null_conditions
+                combined_condition = np.logical_and.reduce(all_conditions, axis=0)
+
+                partial_match = df_adjprice[combined_condition]
+                if not partial_match.empty:
+                    matched = True
+                    discount = partial_match['Discount/Addition'].values[0]
+                    matchCol = [get_non_nan_columns(partial_match, idx) for idx in partial_match.index]
+                    break  # If match found, exit the inner loop
+
+        # Apply discount if matched
+        if matched:
+            df.at[idx, 'Discount'] = float(discount)
+            df.at[idx, 'AdjustedPrice'] = df.at[idx, 'MarketPrice'] + (df.at[idx, 'MarketPrice'] * float(discount) / 100)
+            df.at[idx, 'Matched'] = True
+            df.at[idx, 'AdjustedStatus'] = matchCol[0]
+        else:
+            print(f"Data in row {idx} of df does not match with df_adjprice for filters: {filter_list}")
+
+    return df
+
+updated_df = apply_discounts(df, df_adjprice)
+print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
+
+>>>>>>> Development
 
 # %% Save File
 now = datetime.now()
@@ -498,5 +590,12 @@ date_time = now.strftime("%Y%m%d_%H%M%S")
 root = search_for_file_path()
 save_path = os.path.dirname(root)
 
+<<<<<<< HEAD
+=======
+
+df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
+df_vendor['Discount/Addition'] = updated_df['Discount']
+df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
+>>>>>>> Development
 df_result = df_vendor
 save_master_list_to_csv(df_result, '', save_path, date_time,'',"vendor_estprice" )
