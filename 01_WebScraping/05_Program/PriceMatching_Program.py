@@ -433,8 +433,6 @@ if __name__ == '__main__':
     df_vendor = app_match.get_df_vendor() 
     df_aaprice = app_match.result
 # save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
-<<<<<<< HEAD
-=======
 
 #%% Adjust Price
 df = df_aaprice
@@ -457,7 +455,6 @@ for file in selected_files:
 df_adjprice = df_adjprice[0]
 df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
 df['MarketPrice'] = df['Min_Price'].replace('', np.nan).astype(float)
->>>>>>> Development
 
 #%% Adjust Price
 df = df_aaprice
@@ -477,7 +474,6 @@ for file in selected_files:
         continue
     df_adjprice.append(df_tmp)
 
-<<<<<<< HEAD
 df_adjprice = df_adjprice[0]
 df_adjprice['Priority'] = df_adjprice[['Grade', 'BrandCode', 'ModelCode', 'SubModelCode']].apply(
     lambda row: sum([1 for item in row if item != '-']), axis=1)
@@ -518,14 +514,13 @@ def apply_discount(row):
     
 df['AdjustedPrice']= df.apply(apply_discount, axis=1)
 df_vendor['AdjustedPrice'] = df.apply(apply_discount, axis=1)
-=======
+
 def get_non_nan_columns(df, idx):
     row = df.loc[idx]
     return [col for col in df.columns if pd.notna(row[col]) and col != "Discount/Addition"]
 
 # Extract non-NaN columns for each row in the DataFrame and store in a list
 output = [get_non_nan_columns(df_adjprice, idx) for idx in df_adjprice.index]
-
 
 def apply_discounts(df, df_adjprice):
     # Initializations
@@ -582,20 +577,15 @@ def apply_discounts(df, df_adjprice):
 updated_df = apply_discounts(df, df_adjprice)
 print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
 
->>>>>>> Development
-
 # %% Save File
 now = datetime.now()
 date_time = now.strftime("%Y%m%d_%H%M%S")
 root = search_for_file_path()
 save_path = os.path.dirname(root)
 
-<<<<<<< HEAD
-=======
-
 df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
 df_vendor['Discount/Addition'] = updated_df['Discount']
 df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
->>>>>>> Development
+
 df_result = df_vendor
 save_master_list_to_csv(df_result, '', save_path, date_time,'',"vendor_estprice" )
