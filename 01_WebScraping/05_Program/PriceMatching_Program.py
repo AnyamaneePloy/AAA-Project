@@ -457,64 +457,6 @@ df_adjprice = df_adjprice[0]
 df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
 df['MarketPrice'] = df['MarketPrice'].replace('', np.nan).astype(float)
 
-#%% Adjust Price
-df = df_aaprice
-# Load Adjust Price Data (Add Exception)
-print('**************** Vendor Data Loading **********************')
-selected_files = select_files()
-root = os.path.dirname(selected_files[0])
-print(f'File Number: {len(selected_files)}')
-print('**********************************************************')
-df_adjprice = []
-for file in selected_files:
-    if file.endswith('.csv'):
-        df_tmp = pd.read_csv(file)
-    elif file.endswith('.xlsx'):
-        df_tmp = pd.read_excel(file)
-    else:
-        continue
-    df_adjprice.append(df_tmp)
-
-df_adjprice = df_adjprice[0]
-df_adjprice['Priority'] = df_adjprice[['Grade', 'BrandCode', 'ModelCode', 'SubModelCode']].apply(
-    lambda row: sum([1 for item in row if item != '-']), axis=1)
-df['MarketPrice'] = df['Min_Price'].replace('', np.nan).astype(float)
-
-# Function to apply the discount/addition from the master dataframe to the data dataframe
-def apply_discount(row):
-    # If price is NaN, return NaN
-    price = row.get('MarketPrice', None)
-    if pd.isna(price):
-        return np.nan
-
-    # Set conditions based on available columns
-    conditions = [df_adjprice['Grade'] == row.get('Grade', '-')]
-    
-    if 'BrandCode' in df.columns:
-        conditions.append(df_adjprice['BrandCode'].isin(['-', row.get('BrandCode', '-')]))
-    
-    if 'ModelCode' in df.columns:
-        conditions.append(df_adjprice['ModelCode'].isin(['-', row.get('ModelCode', '-')]))
-    
-    if 'SubModelCode' in df.columns:
-        conditions.append(df_adjprice['SubModelCode'].isin(['-', row.get('SubModelCode', '-')]))
-
-    # Build the final mask
-    mask = np.all(conditions, axis=0)
-    
-    matching_rows = df_adjprice[mask].sort_values(by='Priority', ascending=False)
-    
-    if matching_rows.empty:
-        return price
-    
-    # Calculate new price based on the percentage discount/addition
-    discount_addition_percentage = matching_rows.iloc[0]['Discount/Addition'] / 100
-    updated_price = price * (1 + discount_addition_percentage)
-    
-    return updated_price
-    
-df['AdjustedPrice']= df.apply(apply_discount, axis=1)
-df_vendor['AdjustedPrice'] = df.apply(apply_discount, axis=1)
 
 def get_non_nan_columns(df, idx):
     row = df.loc[idx]
@@ -522,6 +464,7 @@ def get_non_nan_columns(df, idx):
 
 # Extract non-NaN columns for each row in the DataFrame and store in a list
 output = [get_non_nan_columns(df_adjprice, idx) for idx in df_adjprice.index]
+
 
 def apply_discounts(df, df_adjprice):
     # Initializations
@@ -577,6 +520,7 @@ def apply_discounts(df, df_adjprice):
 
 updated_df = apply_discounts(df, df_adjprice)
 print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
+
 
 # %% Save File
 now = datetime.now()
