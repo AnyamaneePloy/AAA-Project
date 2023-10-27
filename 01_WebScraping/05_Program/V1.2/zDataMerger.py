@@ -15,6 +15,7 @@ class DataMerger:
         self.column_priority = {
             'BrandCode': 1,
             'ModelCode': 2,
+            'SubModelCode': 5,
             'Year': 4,
         }
 
@@ -63,7 +64,7 @@ class DataMerger:
     
     def set_default_selections(self):
         # Set, let's say, the top 2 columns as default based on priority
-        default_cols = sorted(self.column_priority, key=self.column_priority.get)[:3]
+        default_cols = sorted(self.column_priority, key=self.column_priority.get)[:2]
 
         for col in default_cols:
             index = self.listbox.get(0, "end").index(col)  # Get index of the column in listbox
@@ -120,13 +121,6 @@ class DataMerger:
             print( self.result.shape[0])
 
             cols_to_drop = ['Keys', 'Tokens', 'Score']
-
-            df_aaprice =  self.result.drop(columns=cols_to_drop)
-            df_vendor = pd.DataFrame(self.df_vendor_curr)
-            df_vendor['MarketPrice'] = df_aaprice['Min_Price']
-            df_vendor['AdjustedPrice'] = df_aaprice['Min_Price']
-            df_vendor['PriceStatus'] = df_aaprice['PriceStatus']
-
             self.df_aaprice =  self.result.drop(columns=cols_to_drop)
             self.df_vendor = pd.DataFrame(self.df_vendor_curr)
             self.df_vendor['MarketPrice'] = self.df_aaprice['Min_Price']
