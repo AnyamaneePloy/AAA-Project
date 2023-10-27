@@ -1,7 +1,6 @@
 #%% Import 
 import pandas as pd
 import numpy as np
-import pyodbc
 import time
 import threading
 import os
@@ -189,7 +188,6 @@ def main():
             df_DMS = pd.read_csv(ls_path[0])
             df_RB = pd.read_csv(ls_path[1])
             df_O2C = pd.read_csv(ls_path[2])
-            df_DMSPrice = pd.read_csv(ls_path[3])
         except Exception as e:
             print(f"Error reading CSV files: {e}")
             continue
@@ -246,10 +244,12 @@ def main():
         save_master_list_to_csv(MasterLst_SubModel, 'SubModel', save_path, date_time,"Master")
         break
 
-    return df_DMS, df_O2C, df_RB, df_DMSPrice, MasterLst_Brand, MasterLst_Model, MasterLst_SubModel
+    return df_DMS, df_O2C, df_RB, MasterLst_Brand, MasterLst_Model, MasterLst_SubModel
 
-#%% Function Calculated
+#%% 
+# Function Calculated
 def calculate_price(df, lst_group):
+
     agg_functions = {
         'Count': 'sum',  # Assuming Count is a numeric field you want to sum
         'Mean_Price': lambda x: int(x.median()),
@@ -265,6 +265,7 @@ def calculate_price(df, lst_group):
     
     # Flatten the column names
     df_result.columns = [col[0] if isinstance(col, tuple) and col[1] == '' else col for col in df_result.columns.values]
+    
     return df_result
 
 def generate_keys(df, columns_tokens):
@@ -284,7 +285,7 @@ def generate_tokens(model_name):
 
 #%% Import Data from Database on .CSV file
 if __name__ == "__main__":
-    df_DMS, df_O2C, df_RB, df_DMSPrice, MasterLst_Brand, MasterLst_Model, MasterLst_SubModel = main()
+    df_DMS, df_O2C, df_RB, MasterLst_Brand, MasterLst_Model, MasterLst_SubModel = main()
 
 # Brand
 blank_count = (MasterLst_Brand.astype(str).applymap(lambda x: x.strip()) == '').sum()
@@ -320,11 +321,10 @@ df_price['SubModelCode'] = tuple_submodel.map(result_SubModelCode2)
 df_price = df_price.applymap(lambda s: s.upper() if isinstance(s, str) else s)
 
 #%% One2Car Data Processing
-# app_o2cprice = ColumnSelector(df_price, dialog_title="Select Column to Group Price from One2Car DATA")
-# app_o2cprice.select_columns(dialog_title="Select Column to Group Price from One2Car DATA")
-# app_o2cprice.mainloop()
-# lst_group = app_o2cprice.selected_columns
-lst_group = ['Brand', 'BrandCode', 'Model', 'ModelCode', 'Year']
+app_o2cprice = ColumnSelector(df_price, dialog_title="Select Column to Group Price from One2Car DATA")
+app_o2cprice.select_columns(dialog_title="Select Column to Group Price from One2Car DATA")
+app_o2cprice.mainloop()
+lst_group = app_o2cprice.selected_columns
 mapp_price = calculate_price(df_price, lst_group)
 # mapp_price.to_csv('mapp_price.csv')
 
@@ -345,29 +345,45 @@ for file in selected_files:
         # Handle other file types (future)
         continue
     df_vendor.append(df)
+
 df_vendor_curr = df_vendor[0]
 
 # Select column 
-# app_vendor = ColumnSelector(df_vendor_curr, dialog_title="Select Column to Mapping from Leasing or Vendor DATA" )
-# app_vendor.select_columns(dialog_title="Select Column to Mapping from Leasing or Vendor DATA")
-# app_vendor.mainloop()
+app_vendor = ColumnSelector(df_vendor_curr, dialog_title="Select Column to Mapping from Leasing or Vendor DATA" )
+app_vendor.select_columns(dialog_title="Select Column to Mapping from Leasing or Vendor DATA")
+app_vendor.mainloop()
 # print("Mapping Columns:", app_vendor.selected_columns)
 
 while True:    
-    columns_to_keep = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 'Year', 'Grade']
+    
+    columns_to_keep = app_vendor.selected_columns
     df_vendor_filt = df_vendor_curr[columns_to_keep]
+    # df_vendor_filt.to_csv('df_vendor_filt.csv')
+
+    #%% Mapping with text analytics
+    columns = ["Brand", "Model", "SubModel", "Year", "Gear", "Color", "CC", "Mile", "Grade"]
+    if __name__ == "__main__":
+        app_mapp = ColumnMapping(columns_to_keep,columns)
+        try:
+            app_mapp.mainloop()
+        except AttributeError:
+            pass
+    tp_mapping = app_mapp.mappings
+
     df_vendor_filt_tmp = df_vendor_filt
+    df_vendor_filt_tmp.rename(columns=tp_mapping , inplace=True)
     # Select Column to Mapping Text Data
-    # app_key = ColumnSelector(df_vendor_filt_tmp, dialog_title="Select KEYS Column for Text Mapping from Vendor")
-    # app_key.select_columns(dialog_title="Select KEYS Column for Text Mapping from Vendor")
-    # app_key.mainloop()
-    columns_tokens =['BrandNameEng', 'ModelName']
+    app_key = ColumnSelector(df_vendor_filt_tmp, dialog_title="Select KEYS Column for Text Mapping from Vendor")
+    app_key.select_columns(dialog_title="Select KEYS Column for Text Mapping from Vendor")
+    app_key.mainloop()
+    columns_tokens = app_key.selected_columns
+
     try:
         if not columns_tokens:
             raise ValueError("No columns were selected.")
         
         df_vendor_filt = generate_keys(df_vendor_filt_tmp, columns_tokens)
-        df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName'])
+        df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName', 'SubModelName'])
         
         # If everything is successful, break out of the loop
         print("Mapping successful!")
@@ -389,13 +405,14 @@ while True:
     choice = input("Do you want to continue? (yes/no): ").strip().lower()
     if choice == 'no':
         break
-#%% Connect Database
-
 
 df_dmsprocess = df_DMS
 # Select DMS Column
 while True:
-    columns_keys = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName']
+    app_key2 = ColumnSelector(df_dmsprocess, dialog_title="DMS Column Need to Mapping")
+    app_key2.select_columns(dialog_title="DMS Column Need to Mapping")
+    app_key2.mainloop()
+    columns_keys = app_key2.selected_columns
     # Check for odd number of columns
     if len(columns_keys) % 2 != 0:
         messagebox.showwarning("Warning", "Please select an even number of columns!")
@@ -417,26 +434,8 @@ if __name__ == '__main__':
     df_aaprice = app_match.result
 # save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
 
-#%%
-# Grouping by and aggregating the median
-lst = ['BrandCode', 'ModelCode', 'CarAge']
-grouped_df2 = df_DMSPrice.groupby(lst).agg(Count=('BrandCode', 'count'),
-                                           MeanOpenPrice=('MedianOpenPrice', 'mean'),
-                                           MeanSoldPrice=('MedianSoldPrice', 'mean')
-                                           ).reset_index()
-
-# Rounding and converting MeanOpenPrice and MeanSoldPrice columns to integers
-grouped_df2['MeanOpenPrice'] = grouped_df2['MeanOpenPrice'].round(0).astype(int)
-grouped_df2['MeanSoldPrice'] = grouped_df2['MeanSoldPrice'].round(0).astype(int)
-
-# Performing the merge
-merged_df = df_vendor.merge(grouped_df2, 
-                            left_on=['BrandCode', 'ModelCode', 'CarAge'], 
-                            right_on=['BrandCode', 'ModelCode', 'CarAge'], 
-                            how='left')
-
-#%% Adjust Price ------------------------------------------------------------------------
-df = merged_df
+#%% Adjust Price
+df = df_aaprice
 # Load Adjust Price Data (Add Exception)
 print('**************** Data to Adjust Price Loading **********************')
 selected_files = select_files()
@@ -455,7 +454,7 @@ for file in selected_files:
 
 df_adjprice = df_adjprice[0]
 df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
-df['MarketPrice'] = df['MarketPrice'].replace('', np.nan).astype(float)
+df['MarketPrice'] = df['Min_Price'].replace('', np.nan).astype(float)
 
 
 def get_non_nan_columns(df, idx):
@@ -528,26 +527,9 @@ date_time = now.strftime("%Y%m%d_%H%M%S")
 root = search_for_file_path()
 save_path = os.path.dirname(root)
 
-def round_to_3_sig_figs(num):
-    # If the value is NaN, return NaN
-    if pd.isna(num):
-        return np.nan
-    
-    if isinstance(num, int):
-        return round(num, -int(len(str(abs(num))) - 3))
-    else:
-        count = 0
-        while abs(num) < 100:
-            num *= 10
-            count += 1
-        rounded = round(num, -int(len(str(int(abs(num)))) - 3))
-        return rounded / (10**count)
 
-df_vendor['MeanOpenPrice'] = updated_df['MeanOpenPrice'].apply(round_to_3_sig_figs)
-df_vendor['MeanSoldPrice'] = updated_df['MeanSoldPrice'].apply(round_to_3_sig_figs)
 df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
 df_vendor['Discount/Addition'] = updated_df['Discount']
 df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
-
 df_result = df_vendor
 save_master_list_to_csv(df_result, '', save_path, date_time,'',"vendor_estprice" )

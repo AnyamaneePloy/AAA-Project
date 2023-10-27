@@ -15,6 +15,7 @@ class DataMerger:
         self.column_priority = {
             'BrandCode': 1,
             'ModelCode': 2,
+            'SubModelCode': 5,
             'Year': 4,
         }
 
@@ -63,7 +64,7 @@ class DataMerger:
     
     def set_default_selections(self):
         # Set, let's say, the top 2 columns as default based on priority
-        default_cols = sorted(self.column_priority, key=self.column_priority.get)[:3]
+        default_cols = sorted(self.column_priority, key=self.column_priority.get)[:2]
 
         for col in default_cols:
             index = self.listbox.get(0, "end").index(col)  # Get index of the column in listbox
