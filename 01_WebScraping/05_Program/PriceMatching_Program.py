@@ -1,9 +1,6 @@
-#%% Import 
+#%% Import Library
 import pandas as pd
 import numpy as np
-import pyodbc
-import time
-import threading
 import os
 import re
 import tkinter as tk
@@ -13,19 +10,21 @@ warnings.filterwarnings("ignore") # Ignore all warnings
 from itertools import combinations
 from fuzzywuzzy import fuzz as fw_fuzz, process as fw_process
 from rapidfuzz import fuzz, process
-from pandastable import Table
 from multiprocessing import Pool
-from datetime import date, datetime
-from tkinter import ttk, filedialog, simpledialog, messagebox, Checkbutton, IntVar, Text, Scrollbar
+from datetime import datetime
+from tkinter import filedialog, messagebox
 
-from zColumnMapping import ColumnMapping
-from zColumnSelector import ColumnSelector
 from zDataMatcher import DataMatcher
 from zDataMerger import DataMerger
-from zPriceAdjuster import PriceAdjuster
+from zDMSDataMerger import DMSDataMerger
+from zDMSMasterData import DMSMasterData
+from zRBMasterData import RBMasterData
+from zDMSAggPriceResult import DMSAggPriceResult
+from zDataSellerMapping import DataSellerMapping
+from zO2CPriceData import O2CPriceData
 
-#%% Folder and File Selection
-# Select Folder Function
+#%% S1: Function Defined
+#%% S1.1: Folder and File Selection Function
 def save_selected_path(selected_path):
     with open("selected_path.txt", "w") as file:
         file.write(selected_path)
@@ -87,7 +86,8 @@ def select_files():
         print("An error occurred while selecting the files. Please ensure you've selected the correct format.")
         print(str(e))
         return []
-    
+        
+#%% S1.2: Fuzzy Matching Text Function
 def find_best_match(target_string, choices):
     # This function finds the best match for a given target_string from a list of choices
     return max(choices, key=lambda choice: fuzz.ratio(target_string, choice))
@@ -98,10 +98,6 @@ def parallel_fuzzy_matching(data, choices, n_processes):
     return results
 
 def fuzzy_match_with_lib_choice(source_df, target_df, source_col, target_col, colname, library="rapidfuzz", threshold=100, limit=1):
-    """
-    Parameters:
-        library: either 'rapidfuzz' or 'fuzzywuzzy'
-    """
     s = source_df[source_col].tolist()
     if library == "rapidfuzz":
         m = target_df[target_col].apply(lambda x: process.extract(x, s, limit=limit, scorer=fuzz.ratio))
@@ -112,7 +108,7 @@ def fuzzy_match_with_lib_choice(source_df, target_df, source_col, target_col, co
     
     target_df[f'{colname}'] = m.apply(lambda x: ', '.join([i[0] for i in x if i[1] >= threshold]))  
     no_matches_count = target_df[target_df[f'{colname}'] == ""].shape[0]
-    percent_data_loss = (no_matches_count / target_df.shape[0]) * 100 
+    percent_data_loss = (no_matches_count / target_df.shape[0]) * 100
     print(f"Percent data completed for {colname}: {100-percent_data_loss:.2f}%")
     
     return target_df, percent_data_loss
@@ -122,10 +118,9 @@ def run_fuzzy_match_with_lib_choice(df, source, target, columns, library="rapidf
         df, _ = fuzzy_match_with_lib_choice(source_df, target_df, source_col, target_col, colname, library, thresholds, limit)
     return df
 
-# Find unique
+#%% S1.3: Find Unique Data Function
 def create_unique_brands_dataframe(dataframe, column_names, new_column_suffixes, new_column_prefix):
     unique_data = {}
-    
     # Determine the combinations of unique values for brand and model columns
     unique_combinations = dataframe[column_names].drop_duplicates().reset_index(drop=True)
     
@@ -148,11 +143,8 @@ def process_dataframes_and_print(df_list, col_lists, suffix_lists, prefix_lists)
         # print(f'{prefix[-1]}_{suffixes[-1]} :\t', len(unique_df))
 
     return result_dfs
-
+#%% S1.4: Save File Function
 def save_master_list_to_csv(master_df, category, save_path_base, current_date_time, datatype, namefile=None):
-    """
-    Save a provided master dataframe to a CSV file.
-    """
     if datatype == "Master":
         save_path_target = f"Input/04_Master/{category}_MasterLst.csv"
     else:
@@ -171,34 +163,71 @@ def process_and_print(df_list, col_lists, suffix_lists, prefix_lists):
 def match_table(df_list, col_lists, suffix_lists, prefix_lists):
     return process_dataframes_and_print(df_list, col_lists, suffix_lists, prefix_lists)
 
+#%% S1.5: Main Function to match Brand, Model and Submodel (DMS, RB, One2Car)
 def main():
-    while True:  # Loop until valid directory is selected
-        # Load Data
-        root = search_for_file_path()
-        if root is None:
-            break
-        ls_path = [os.path.join(path, name) 
-                 for path, subdirs, files in os.walk(root) 
-                 for name in files if name.endswith(".csv")]
-        print(f'File Number: {len(ls_path)}')
-
-        if len(ls_path) < 3:
-            print("Error: Not enough CSV files found in the selected directory. Please select a directory with at least 3 CSV files.")
-            continue
+    while True:  
+        # Load Data from Database
         try:
-            df_DMS = pd.read_csv(ls_path[0])
-            df_RB = pd.read_csv(ls_path[1])
-            df_O2C = pd.read_csv(ls_path[2])
-            df_DMSPrice = pd.read_csv(ls_path[3])
+            #------------------------------------------------------------------------------
+            print("===== Loading Data from Database =====")
+            ## One2Car MASTER -----------------------------------------
+            print("=============================================")
+            print("Loading One2Car Data")
+            df_O2Cprocessor = O2CPriceData()
+            df_O2C = df_O2Cprocessor.get_data_from_db()  # Call the method with parentheses
+            print("One2Car Master Data:", df_O2C.shape)
+            # print(df_O2C.head(3))
+            # Define the columns to check for duplicates
+            columns = ['Brand', 'Model', 'SubModel', 'Year', 'Gear', 'Fuel', 'Color_flg', 'CarTypes', 'Count',
+                       'Mean_Price', 'Median_Price', 'Min_Price', 'Max_Price', 'Diff_Price']     
+            print("Number of duplicate rows before removal:", df_O2Cprocessor.count_duplicates(subset=columns))
+            df_O2C = df_O2Cprocessor.drop_duplicates(subset=columns, inplace=True)
+            print("Number of duplicate rows after removal:", df_O2Cprocessor.count_duplicates(subset=columns))
+            print()
+
+            ## DMS MASTER -----------------------------------------
+            print("=============================================")
+            print("Loading DMS MASTER Data")
+            df_DMSprocessor = DMSMasterData()
+            df_DMS = df_DMSprocessor.get_data_from_db()  # Call the method with parentheses
+            print("DMS Master Data:", df_DMS.shape )
+            # print( df_DMS.head(3))
+            # Define the columns to check for duplicates
+            columns = ['BrandCode', 'BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName']     
+            print("Number of duplicate rows before removal:", df_DMSprocessor.count_duplicates(subset=columns))
+            df_DMS = df_DMSprocessor.drop_duplicates(subset=columns, inplace=True)
+            print("Number of duplicate rows after removal:", df_DMSprocessor.count_duplicates(subset=columns))
+            print()
+
+            ## RedBook MASTER -----------------------------------------
+            print("=============================================")
+            print("Loading RedBook MASTER Data")
+            df_RBprocessor = RBMasterData()
+            df_RB = df_RBprocessor.get_data_from_db()
+            # Define the columns to check for duplicates
+            columns = ['RBBandCode', 'RBBrand', 'RBModel', 'RBSubModel']
+            print("RedBook Master Data:", df_RB.shape)
+            # print(df_RB.head(3))
+            print("Number of duplicate rows before removal:", df_RBprocessor.count_duplicates(subset=columns))
+            df_RB = df_RBprocessor.drop_duplicates(subset=columns, inplace=True)
+            print("Number of duplicate rows after removal:", df_RBprocessor.count_duplicates(subset=columns))
+            print()
+
+            ## DMS Price -----------------------------------------
+            print("=============================================")
+            print("Loading Price of DMS Database")
+            df_DMSPriceprocessor = DMSAggPriceResult()
+            df_DMSPrice = df_DMSPriceprocessor.run()
+            print("Price of DMS Database:", df_DMSPrice.shape)
+            print()
+            print("=============================================")
+            print("Display Matching Percentage of Brand, Model and Submodel")
+            print()
+            # print( df_DMSPrice.head(3))
         except Exception as e:
             print(f"Error reading CSV files: {e}")
             continue
-
-        now = datetime.now()
-        date_time = now.strftime("%Y%m%d")
-        save_path = os.path.dirname(os.path.dirname(os.path.dirname(root)))
-        # print()
-
+        ## Start to Matching Data
         # Brands
         uniBrands_df_DMS, uniBrands_df_O2C, uniBrands_df_RB = process_dataframes_and_print(
             [df_DMS, df_O2C, df_RB], 
@@ -206,13 +235,12 @@ def main():
             [['DMS','DMS'], ['O2C'], ['RB']],
             [['BrandCode','BrandNameEng'], ['BrandNameEng'], ['BrandNameEng']], 
         )
-        # print()
         columns_brands = [
             (uniBrands_df_O2C, uniBrands_df_DMS, 'BrandNameEng_O2C', 'BrandNameEng_DMS', 'BrandNameEng_O2C'),
             (uniBrands_df_RB, uniBrands_df_DMS, 'BrandNameEng_RB', 'BrandNameEng_DMS', 'BrandNameEng_RB')
         ]
         MasterLst_Brand = run_fuzzy_match_with_lib_choice(df_DMS, df_O2C, df_RB, columns_brands,library="fuzzywuzzy", thresholds=90)
-        save_master_list_to_csv(MasterLst_Brand, 'Brand', save_path, date_time, "Master")
+        # save_master_list_to_csv(MasterLst_Brand, 'Brand', save_path, date_time, "Master")
 
         # Models
         uniModel_df_DMS, uniModel_df_O2C, uniModel_df_RB = process_dataframes_and_print(
@@ -221,13 +249,12 @@ def main():
             [['DMS', 'DMS', 'DMS'], ['O2C', 'O2C'], ['RB', 'RB']],
             [['BrandCode', 'ModelCode', 'ModelName'], ['BrandCode','ModelName'], ['BrandCode','ModelName']]
             )
-        # print()
         columns_models = [
             (uniModel_df_O2C, uniModel_df_DMS, 'ModelName_O2C', 'ModelName_DMS', 'ModelName_O2C'),
             (uniModel_df_RB, uniModel_df_DMS, 'ModelName_RB', 'ModelName_DMS', 'ModelName_RB')
         ]
         MasterLst_Model = run_fuzzy_match_with_lib_choice(df_DMS, df_O2C, df_RB, columns_models,library="fuzzywuzzy", thresholds=90)
-        save_master_list_to_csv(MasterLst_Model, 'Model', save_path, date_time,"Master")
+        # save_master_list_to_csv(MasterLst_Model, 'Model', save_path, date_time,"Master")
 
         # Sub-Model
         uniSubModel_df_DMS, uniSubModel_df_O2C, uniSubModel_df_RB = process_dataframes_and_print(
@@ -237,18 +264,15 @@ def main():
             [['BrandCode', 'ModelCode', 'SubModelCode','SubModelName'],
             ['BrandCode', 'ModelCode','SubModelName'], ['BrandCode', 'ModelCode','SubModelName']]
             )
-        # print()
         columns_submodels = [
             (uniSubModel_df_O2C, uniSubModel_df_DMS, 'SubModelName_O2C', 'SubModelName_DMS', 'SubModelName_O2C'),
             (uniSubModel_df_RB, uniSubModel_df_DMS, 'SubModelName_RB', 'SubModelName_DMS', 'SubModelName_RB')
         ]
         MasterLst_SubModel = run_fuzzy_match_with_lib_choice(df_DMS, df_O2C, df_RB, columns_submodels,library="rapidfuzz", thresholds=90)
-        save_master_list_to_csv(MasterLst_SubModel, 'SubModel', save_path, date_time,"Master")
+        # save_master_list_to_csv(MasterLst_SubModel, 'SubModel', save_path, date_time,"Master")
         break
-
     return df_DMS, df_O2C, df_RB, df_DMSPrice, MasterLst_Brand, MasterLst_Model, MasterLst_SubModel
-
-#%% Function Calculated
+#%% S1.6: Price Calculation Function (One2Car)
 def calculate_price(df, lst_group):
     agg_functions = {
         'Count': 'sum',  # Assuming Count is a numeric field you want to sum
@@ -256,7 +280,6 @@ def calculate_price(df, lst_group):
         'Min_Price': 'min',
         'Max_Price': lambda x: int(x.median()),
     }
-
     df_result = df.groupby(lst_group).agg(agg_functions).reset_index()  
     # Round the values and convert to integer
     for col in ['Count', 'Mean_Price', 'Min_Price', 'Max_Price']:
@@ -266,7 +289,7 @@ def calculate_price(df, lst_group):
     # Flatten the column names
     df_result.columns = [col[0] if isinstance(col, tuple) and col[1] == '' else col for col in df_result.columns.values]
     return df_result
-
+#%% S1.7: Generate Key and Tokens
 def generate_keys(df, columns_tokens):
     # Create the 'Keys' column based on the number of selected columns
     df['Keys'] = df[columns_tokens[0]]
@@ -274,7 +297,6 @@ def generate_keys(df, columns_tokens):
         df['Keys'] += ' ' + df[col].str.upper()
     df['Keys'] = df['Keys'].str.replace(r'[\u0E00-\u0E7F]+', '')# 1. Remove Thai words
     df['Keys'] = df['Keys'].str.replace(r'\(|\)', '', regex=True).str.strip()# Removing '()'
-    
     df['Tokens'] = df['Keys'].apply(generate_tokens)  # Apply generate_tokens directly here
     return df
 
@@ -282,7 +304,8 @@ def generate_tokens(model_name):
     alphanumeric_pattern = re.compile(r'^[a-zA-Z0-9.-]+$')  # Include numbers, period, and hyphen
     return {word for word in str(model_name).split() if alphanumeric_pattern.match(word)}
 
-#%% Import Data from Database on .CSV file
+#%% S2: Import Data from Database or .CSV file
+# Import from database 
 if __name__ == "__main__":
     df_DMS, df_O2C, df_RB, df_DMSPrice, MasterLst_Brand, MasterLst_Model, MasterLst_SubModel = main()
 
@@ -319,34 +342,55 @@ df_price['SubModelCode'] = tuple_submodel.map(result_SubModelCode2)
 # Convert only strings in the DataFrame to uppercase
 df_price = df_price.applymap(lambda s: s.upper() if isinstance(s, str) else s)
 
-#%% One2Car Data Processing
+#%% One2Car Data Processing  ---------------------------------------------
 # app_o2cprice = ColumnSelector(df_price, dialog_title="Select Column to Group Price from One2Car DATA")
 # app_o2cprice.select_columns(dialog_title="Select Column to Group Price from One2Car DATA")
 # app_o2cprice.mainloop()
 # lst_group = app_o2cprice.selected_columns
-lst_group = ['Brand', 'BrandCode', 'Model', 'ModelCode', 'Year']
+
+# Group and Calculate Price Data from One2Car
+print('\n**************** One2Car Data Processing **********************')
+lst_group = ['Brand', 'BrandCode', 'Model', 'ModelCode', 'Year', 'CarAge']
+df_price['CarAge'] = df_price['CarAge'].astype('int')
 mapp_price = calculate_price(df_price, lst_group)
-# mapp_price.to_csv('mapp_price.csv')
+mapp_price['Year'] = mapp_price['Year'].astype(object) # Convert 'Year' and 'CarAge' columns to object type
+mapp_price['CarAge'] = mapp_price['CarAge'].astype(object)
+print(mapp_price.head(3))
 
-#%% Vendor Data Processing
+#%% Vendor Data Processing ---------------------------------------------
 # Load Vendor Data (Add Exception)
-print('**************** Seller Data Loading **********************')
-selected_files = select_files()
-root = os.path.dirname(selected_files[0])
-print(f'File Number: {len(selected_files)}')
-print('**********************************************************')
-df_vendor = []
-for file in selected_files:
-    if file.endswith('.csv'):
-        df = pd.read_csv(file)
-    elif file.endswith('.xlsx'):
-        df = pd.read_excel(file)
-    else:
-        # Handle other file types (future)
-        continue
-    df_vendor.append(df)
-df_vendor_curr = df_vendor[0]
+print('\n**************** Seller Data Loading **********************')
+df_vendorprocessor = DataSellerMapping()
+df_vendor, df_vendor_tmp, original_filename, full_save_path= df_vendorprocessor.run()# Run the process
+print(f'Number of Original File: {df_vendor_tmp.shape[0]}')
+print(f'Number of DMS Mapping File: {df_vendor.shape[0]}\n')
+# Check if there are any null values in the target column
+target_columns = ["BrandCode", "ModelCode", "ManufactureYear"]
+if df_vendor[target_columns].isnull().any().any():  # The second 'any()' checks across columns
+    print()
+    print(f"At least one of the columns {target_columns} contains null data.")
+    null_data_rows = df_vendor[df_vendor[target_columns].isnull().any(axis=1)]
+    print(null_data_rows)
+    year_columns = [column for column in df_vendor_tmp.columns if 'Year' in column]
+    if df_vendor["ManufactureYear"].isnull().any() & len(year_columns) >= 1:
+        print("List Column of Manufaturing Year in Seller's File (Excel or CSV)")
+        [print(str(i+1)+": " + x) for i, x in enumerate(year_columns)]
+        n_Select = int(input(f'SELECT Number of Column to Mapping: '))
+        colName = year_columns[n_Select-1]
+        # Perform a left join
+        result = pd.merge(df_vendor, df_vendor_tmp[['VinNo', colName]], left_on='VinNo', right_on='VinNo', how='left')
+        comparison_df = result['Year']==result[colName]
+        mismatches = df_vendor[comparison_df]
+        df_vendor['Year'] = df_vendor['Year'].combine_first(result[colName])
+else:
+    print(f"==== None of the columns {target_columns} have null data. ====")
 
+# Now you can use df, original_filename, and full_save_path as needed
+print(f"DataFrame:\n{df_vendor.head()}")
+print(f"Original Filename: {original_filename}")
+print(f"Full Save Path: {full_save_path}")
+
+df_vendor_curr = df_vendor
 # Select column 
 # app_vendor = ColumnSelector(df_vendor_curr, dialog_title="Select Column to Mapping from Leasing or Vendor DATA" )
 # app_vendor.select_columns(dialog_title="Select Column to Mapping from Leasing or Vendor DATA")
@@ -354,7 +398,7 @@ df_vendor_curr = df_vendor[0]
 # print("Mapping Columns:", app_vendor.selected_columns)
 
 while True:    
-    columns_to_keep = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 'Year', 'Grade']
+    columns_to_keep = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 'Year', 'CarAge', 'Grade']
     df_vendor_filt = df_vendor_curr[columns_to_keep]
     df_vendor_filt_tmp = df_vendor_filt
     # Select Column to Mapping Text Data
@@ -365,12 +409,9 @@ while True:
     try:
         if not columns_tokens:
             raise ValueError("No columns were selected.")
-        
         df_vendor_filt = generate_keys(df_vendor_filt_tmp, columns_tokens)
         df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName'])
-        
-        # If everything is successful, break out of the loop
-        print("Mapping successful!")
+        print("Mapping Successful!")
         break
 
     except KeyError as ke:
@@ -389,9 +430,7 @@ while True:
     choice = input("Do you want to continue? (yes/no): ").strip().lower()
     if choice == 'no':
         break
-#%% Connect Database
-
-
+#%%  Database
 df_dmsprocess = df_DMS
 # Select DMS Column
 while True:
@@ -417,23 +456,14 @@ if __name__ == '__main__':
     df_aaprice = app_match.result
 # save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
 
-#%%
+#%% Merge DMS price Data 
 # Grouping by and aggregating the median
 lst = ['BrandCode', 'ModelCode', 'CarAge']
-grouped_df2 = df_DMSPrice.groupby(lst).agg(Count=('BrandCode', 'count'),
-                                           MeanOpenPrice=('MedianOpenPrice', 'mean'),
-                                           MeanSoldPrice=('MedianSoldPrice', 'mean')
-                                           ).reset_index()
-
+app_aaamatch = DMSDataMerger(df_vendor, df_DMSPrice, lst)
+merged_df = app_aaamatch.run()
 # Rounding and converting MeanOpenPrice and MeanSoldPrice columns to integers
-grouped_df2['MeanOpenPrice'] = grouped_df2['MeanOpenPrice'].round(0).astype(int)
-grouped_df2['MeanSoldPrice'] = grouped_df2['MeanSoldPrice'].round(0).astype(int)
-
-# Performing the merge
-merged_df = df_vendor.merge(grouped_df2, 
-                            left_on=['BrandCode', 'ModelCode', 'CarAge'], 
-                            right_on=['BrandCode', 'ModelCode', 'CarAge'], 
-                            how='left')
+merged_df['AAA_OpenPrice'] = merged_df['AAA_OpenPrice'].round(0).astype(int)
+merged_df['AAA_SoldPrice'] = merged_df['AAA_SoldPrice'].round(0).astype(int)
 
 #%% Adjust Price ------------------------------------------------------------------------
 df = merged_df
@@ -457,14 +487,11 @@ df_adjprice = df_adjprice[0]
 df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
 df['MarketPrice'] = df['MarketPrice'].replace('', np.nan).astype(float)
 
-
 def get_non_nan_columns(df, idx):
     row = df.loc[idx]
     return [col for col in df.columns if pd.notna(row[col]) and col != "Discount/Addition"]
-
 # Extract non-NaN columns for each row in the DataFrame and store in a list
 output = [get_non_nan_columns(df_adjprice, idx) for idx in df_adjprice.index]
-
 
 def apply_discounts(df, df_adjprice):
     # Initializations
@@ -478,7 +505,6 @@ def apply_discounts(df, df_adjprice):
 
     for idx, main_row in df.iterrows():
         matched = False
-
         # Dynamically generate perfect match condition
         conditions = [df_adjprice[col] == main_row[col] for col in filter_list if col in df.columns]
         perfect_match_condition = np.logical_and.reduce(conditions, axis=0)
@@ -515,14 +541,12 @@ def apply_discounts(df, df_adjprice):
             df.at[idx, 'AdjustedStatus'] = matchCol[0]
         else:
             print(f"Data in row {idx} of df does not match with df_adjprice for filters: {filter_list}")
-
     return df
 
 updated_df = apply_discounts(df, df_adjprice)
 print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
 
-
-# %% Save File
+#%% Save File
 now = datetime.now()
 date_time = now.strftime("%Y%m%d_%H%M%S")
 root = search_for_file_path()
@@ -543,11 +567,17 @@ def round_to_3_sig_figs(num):
         rounded = round(num, -int(len(str(int(abs(num)))) - 3))
         return rounded / (10**count)
 
-df_vendor['MeanOpenPrice'] = updated_df['MeanOpenPrice'].apply(round_to_3_sig_figs)
-df_vendor['MeanSoldPrice'] = updated_df['MeanSoldPrice'].apply(round_to_3_sig_figs)
+df_vendor['MeanOpenPrice'] = updated_df['AAA_OpenPrice'].apply(round_to_3_sig_figs)
+df_vendor['MeanSoldPrice'] = updated_df['AAA_SoldPrice'].apply(round_to_3_sig_figs)
+df_vendor['PriceStatus_AAA'] = updated_df['AAA_PriceStatus']
 df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
 df_vendor['Discount/Addition'] = updated_df['Discount']
 df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
 
-df_result = df_vendor
-save_master_list_to_csv(df_result, '', save_path, date_time,'',"vendor_estprice" )
+listCol = ['ItemCode', 'VinNo', 'ContractNo', 'BrandCode', 'BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 
+           'ManufactureYear', 'Grade', 'InQuality', 'CcName', 'GearName', 'drive', 'Color', 'MilesNo', 'ReceivedDate', 'UpdatedDate', 
+           'CarAge', 'MarketPrice', 'AdjustedPrice', 'PriceStatus',  'MeanOpenPrice', 'MeanSoldPrice', 'PriceStatus_AAA',
+           'Discount/Addition', 'AdjustedStatus']
+df_result = df_vendor[listCol]
+filenameSave = original_filename + "_estprice" 
+save_master_list_to_csv(df_result, '', save_path, date_time,'',filenameSave)
