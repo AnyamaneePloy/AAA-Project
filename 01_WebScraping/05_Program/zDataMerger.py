@@ -15,6 +15,7 @@ class DataMerger:
         self.column_priority = {
             'BrandCode': 1,
             'ModelCode': 2,
+            'CarAge': 3,
             'Year': 4,
         }
 
@@ -95,8 +96,6 @@ class DataMerger:
                 if self.result['Min_Price'].isna().any():
                     next_cols = next_cols[:-1]
 
-                    
-
                     merge_cols = next_cols + permanent_columns
                     mapp_price_new = self.calculate_price(self.mapp_price, next_cols)
                     df_reduced = self.df_vendor_filt.merge(mapp_price_new[merge_cols],
@@ -120,13 +119,6 @@ class DataMerger:
             print( self.result.shape[0])
 
             cols_to_drop = ['Keys', 'Tokens', 'Score']
-
-            df_aaprice =  self.result.drop(columns=cols_to_drop)
-            df_vendor = pd.DataFrame(self.df_vendor_curr)
-            df_vendor['MarketPrice'] = df_aaprice['Min_Price']
-            df_vendor['AdjustedPrice'] = df_aaprice['Min_Price']
-            df_vendor['PriceStatus'] = df_aaprice['PriceStatus']
-
             self.df_aaprice =  self.result.drop(columns=cols_to_drop)
             self.df_vendor = pd.DataFrame(self.df_vendor_curr)
             self.df_vendor['MarketPrice'] = self.df_aaprice['Min_Price']
