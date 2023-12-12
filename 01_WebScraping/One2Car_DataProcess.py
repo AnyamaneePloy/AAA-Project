@@ -245,7 +245,7 @@ df_extract['WheelDrive'] = df_extract['Name'].str.extract("(" + "|".join(ls_Whee
 df_extract['WheelDrive'] = df_extract['WheelDrive'].str.upper()
 df_extract['Fuel'] = df_extract['fuelType'].replace(ls_oldFuel, ls_newFuel)
 # Replace the matched pattern with an empty string in the 'Car Model' column
-df_extract['Tmpsub_Model'] = df_extract['Name'].str.replace(r'\(ปี \d{2}-\d{2}\)', '')
+df_extract['Tmpsub_Model'] = df_extract['Name'].str.replace(r'\(ปี \d{2}-\d{2}\)', '', regex=True).str.strip()
 df_extract['Tmpsub_Model'] = df_extract['Tmpsub_Model'].str.extract(r'(\d+\.\d+\s.*)')
 df_extract['Gear_Type'] = df_extract['Gear_Type'].astype(str)
 df_extract['Gear'] = df_extract['Gear_Type']
