@@ -78,7 +78,8 @@ col_name = ['PageNo',
  'Currency',
  'addressLocality',
  'addressRegion',
- 'FolderName']
+ 'FolderName',
+ 'CreatedDate']
 
 #%% Define Function
 def check_and_create_directory(directory_path):
@@ -178,12 +179,14 @@ df_noclean = pd.concat(df_noclean)
 grouped_counts = df_noclean.groupby('folder_name').size().reset_index(name='counts')
 print(grouped_counts)
 
+# Convert the 'date_string' column to datetime
+df_noclean['CreatedDate'] = pd.to_datetime(df_noclean['folder_name'], format='%Y%m%d')
 # Drop colunm in dataframe and change column name
 df_drop = df_noclean.drop(columns= col_drop)
 df_drop.columns = col_name
 
 df_noclean = df_drop.sort_values(by='FolderName')
-cols_to_exclude = ['FolderName', 'PageNo', 'Position']# Exclude 'folder_name', 'PageNo', and 'Position' when checking for duplicates
+cols_to_exclude = ['FolderName', 'PageNo', 'Position','CreatedDate']# Exclude 'folder_name', 'PageNo', and 'Position' when checking for duplicates
 cols_for_duplicate_check = [col for col in df_noclean.columns if col not in cols_to_exclude]
 
 results = []
@@ -214,7 +217,7 @@ print(f'Raw Data Amount: {df_drop.shape[0]} rows : {df_drop.shape[1]} columns')
 
 #%% Data Extraction to important features
 df_extract= df_drop
-columns_to_check = df_extract.columns.difference(['PageNo', 'Position', 'FolderName'])
+columns_to_check = df_extract.columns.difference(['PageNo', 'Position', 'FolderName','CreatedDate'])
 # Count duplicate rows based on the selected columns
 duplicate_count = df_extract.duplicated(subset=columns_to_check).sum()
 print("Total duplicate rows:", duplicate_count)
@@ -268,6 +271,9 @@ df_extract['SubModel'] = df_extract['SubModel'].str.strip()
 # Remove non-numeric characters (comma) and convert column A to float
 df_extract['Mile_km'] = df_extract['Mile_km'].str.replace(',', '').astype(float)
 df_extract['Color_flg'] = df_extract['Color'].map(color_flag)# Determine color to favor( flag = 1) ['ขาว', 'ดำ'] color
+# Convert 'Year' column to integer
+df_extract['Year'] = pd.to_numeric(df_extract['Year'], errors='coerce')
+df_extract['CarAge'] = df_extract['CreatedDate'].dt.year - df_extract['Year']
 
 #%% Data Cleaning 
 # Explore from data One2Car
@@ -292,7 +298,7 @@ save_path_target = f"03_DataSave/03_One2Car_{date_time}_cleaned.csv"
 df_cleaned.to_csv(os.path.join(save_path,save_path_target), index= False, encoding='utf-8-sig')
 
 #%% Pricing Data Range
-lst_group = ['Brand', 'Model', 'SubModel', 'Year', 'Gear', 'Fuel', 'Color_flg', 'CarTypes']
+lst_group = ['Brand', 'Model', 'SubModel', 'Year', 'CarAge', 'Gear', 'Fuel', 'Color_flg', 'CarTypes']
 
 # Group the DataFrame and calculate count, min, and max values
 df_price_o2c = calculate_price_statistics(df_cleaned, lst_group)
