@@ -358,226 +358,237 @@ mapp_price['CarAge'] = mapp_price['CarAge'].astype(object)
 print(mapp_price.head(3))
 
 #%% Vendor Data Processing ---------------------------------------------
-# Load Vendor Data (Add Exception)
-print('\n**************** Seller Data Loading **********************')
-df_vendorprocessor = DataSellerMapping()
-df_vendor, df_vendor_tmp, original_filename, full_save_path= df_vendorprocessor.run()# Run the process
-print(f'Number of Original File: {df_vendor_tmp.shape[0]}')
-print(f'Number of DMS Mapping File: {df_vendor.shape[0]}\n')
-# Check if there are any null values in the target column
-target_columns = ["BrandCode", "ModelCode", "ManufactureYear"]
-if df_vendor[target_columns].isnull().any().any():  # The second 'any()' checks across columns
-    print()
-    print(f"At least one of the columns {target_columns} contains null data.")
-    null_data_rows = df_vendor[df_vendor[target_columns].isnull().any(axis=1)]
-    print(null_data_rows)
-    year_columns = [column for column in df_vendor_tmp.columns if 'Year' in column]
-    if df_vendor["ManufactureYear"].isnull().any() & len(year_columns) >= 1:
-        print("List Column of Manufaturing Year in Seller's File (Excel or CSV)")
-        [print(str(i+1)+": " + x) for i, x in enumerate(year_columns)]
-        n_Select = int(input(f'SELECT Number of Column to Mapping: '))
-        colName = year_columns[n_Select-1]
-        # Perform a left join
-        result = pd.merge(df_vendor, df_vendor_tmp[['VinNo', colName]], left_on='VinNo', right_on='VinNo', how='left')
-        comparison_df = result['Year']==result[colName]
-        mismatches = df_vendor[comparison_df]
-        df_vendor['Year'] = df_vendor['Year'].combine_first(result[colName])
-else:
-    print(f"==== None of the columns {target_columns} have null data. ====")
-
-# Now you can use df, original_filename, and full_save_path as needed
-print(f"DataFrame:\n{df_vendor.head()}")
-print(f"Original Filename: {original_filename}")
-print(f"Full Save Path: {full_save_path}")
-
-df_vendor_curr = df_vendor
-# Select column 
-# app_vendor = ColumnSelector(df_vendor_curr, dialog_title="Select Column to Mapping from Leasing or Vendor DATA" )
-# app_vendor.select_columns(dialog_title="Select Column to Mapping from Leasing or Vendor DATA")
-# app_vendor.mainloop()
-# print("Mapping Columns:", app_vendor.selected_columns)
-
-while True:    
-    columns_to_keep = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 'Year', 'CarAge', 'Grade']
-    df_vendor_filt = df_vendor_curr[columns_to_keep]
-    df_vendor_filt_tmp = df_vendor_filt
-    # Select Column to Mapping Text Data
-    # app_key = ColumnSelector(df_vendor_filt_tmp, dialog_title="Select KEYS Column for Text Mapping from Vendor")
-    # app_key.select_columns(dialog_title="Select KEYS Column for Text Mapping from Vendor")
-    # app_key.mainloop()
-    columns_tokens =['BrandNameEng', 'ModelName']
-    try:
-        if not columns_tokens:
-            raise ValueError("No columns were selected.")
-        df_vendor_filt = generate_keys(df_vendor_filt_tmp, columns_tokens)
-        df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName'])
-        print("Mapping Successful!")
-        break
-
-    except KeyError as ke:
-        # This will catch if one of the columns in columns_tokens doesn't exist in df_vendor_filt or df_DMS.
-        print(f"Error: Column '{ke}' not found in the DataFrame. Try again.")
-        
-    except ValueError as ve:
-        # This will catch the custom exception we raised if no columns were selected.
-        print(f"Error: {ve}. Try again.")
-        
-    except Exception as e:
-        # This will catch any other general exceptions and errors.
-        print(f"An unexpected error occurred: {e}. Try again.")
-    
-    # Optionally, add a way for users to exit the loop
-    choice = input("Do you want to continue? (yes/no): ").strip().lower()
-    if choice == 'no':
-        break
-#%%  Database
-df_dmsprocess = df_DMS
-# Select DMS Column
 while True:
-    columns_keys = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName']
-    # Check for odd number of columns
-    if len(columns_keys) % 2 != 0:
-        messagebox.showwarning("Warning", "Please select an even number of columns!")
-        continue
+    # Load Vendor Data (Add Exception)
+    print('\n**************** Seller Data Loading **********************')
+    df_vendorprocessor = DataSellerMapping()
+    df_vendor, df_vendor_tmp, original_filename, full_save_path= df_vendorprocessor.run()# Run the process
+    print(f'Number of Original File: {df_vendor_tmp.shape[0]}')
+    print(f'Number of DMS Mapping File: {df_vendor.shape[0]}\n')
+    # Check if there are any null values in the target column
+    target_columns = ["BrandCode", "ModelCode", "ManufactureYear"]
+    if df_vendor[target_columns].isnull().any().any():  # The second 'any()' checks across columns
+        print()
+        print(f"At least one of the columns {target_columns} contains null data.")
+        null_data_rows = df_vendor[df_vendor[target_columns].isnull().any(axis=1)]
+        print(null_data_rows)
+        year_columns = [column for column in df_vendor_tmp.columns if 'Year' in column]
+        if df_vendor["ManufactureYear"].isnull().any() & len(year_columns) >= 1:
+            print("List Column of Manufaturing Year in Seller's File (Excel or CSV)")
+            [print(str(i+1)+": " + x) for i, x in enumerate(year_columns)]
+            n_Select = int(input(f'SELECT Number of Column to Mapping: '))
+            colName = year_columns[n_Select-1]
+            # Perform a left join
+            result = pd.merge(df_vendor, df_vendor_tmp[['VinNo', colName]], left_on='VinNo', right_on='VinNo', how='left')
+            comparison_df = result['Year']==result[colName]
+            mismatches = df_vendor[comparison_df]
+            df_vendor['Year'] = df_vendor['Year'].combine_first(result[colName])
     else:
-        print("Selected Columns:", columns_keys)
-        break
+        print(f"==== None of the columns {target_columns} have null data. ====")
 
-app = DataMatcher(df_vendor_filt, df_dmsprocess, columns_keys)
-app.run()
-df_vendor_filt = app.df_vendor_filt
+    # Now you can use df, original_filename, and full_save_path as needed
+    print(f"DataFrame:\n{df_vendor.head()}")
+    print(f"Original Filename: {original_filename}")
+    print(f"Full Save Path: {full_save_path}")
 
-#%% Filter Mapping
-if __name__ == '__main__':
-    root = tk.Tk()
-    app_match = DataMerger(root, df_vendor_curr, df_vendor_filt, mapp_price)
-    root.mainloop()
-    df_vendor = app_match.get_df_vendor() 
-    df_aaprice = app_match.result
-# save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
+    df_vendor_curr = df_vendor
+    # Select column 
+    # app_vendor = ColumnSelector(df_vendor_curr, dialog_title="Select Column to Mapping from Leasing or Vendor DATA" )
+    # app_vendor.select_columns(dialog_title="Select Column to Mapping from Leasing or Vendor DATA")
+    # app_vendor.mainloop()
+    # print("Mapping Columns:", app_vendor.selected_columns)
 
-#%% Merge DMS price Data 
-# Grouping by and aggregating the median
-lst = ['BrandCode', 'ModelCode', 'CarAge']
-app_aaamatch = DMSDataMerger(df_vendor, df_DMSPrice, lst)
-merged_df = app_aaamatch.run()
-# Rounding and converting MeanOpenPrice and MeanSoldPrice columns to integers
-merged_df['AAA_OpenPrice'] = merged_df['AAA_OpenPrice'].round(0).astype(int)
-merged_df['AAA_SoldPrice'] = merged_df['AAA_SoldPrice'].round(0).astype(int)
+    while True:    
+        columns_to_keep = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 'Year', 'CarAge', 'Grade']
+        df_vendor_filt = df_vendor_curr[columns_to_keep]
+        df_vendor_filt_tmp = df_vendor_filt
+        # Select Column to Mapping Text Data
+        # app_key = ColumnSelector(df_vendor_filt_tmp, dialog_title="Select KEYS Column for Text Mapping from Vendor")
+        # app_key.select_columns(dialog_title="Select KEYS Column for Text Mapping from Vendor")
+        # app_key.mainloop()
+        columns_tokens =['BrandNameEng', 'ModelName']
+        try:
+            if not columns_tokens:
+                raise ValueError("No columns were selected.")
+            df_vendor_filt = generate_keys(df_vendor_filt_tmp, columns_tokens)
+            df_DMS = generate_keys(df_DMS, ['BrandNameEng', 'ModelName'])
+            print("Mapping Successful!")
+            break
 
-#%% Adjust Price ------------------------------------------------------------------------
-df = merged_df
-# Load Adjust Price Data (Add Exception)
-print('**************** Data to Adjust Price Loading **********************')
-selected_files = select_files()
-root = os.path.dirname(selected_files[0])
-print(f'File Number: {len(selected_files)}')
-print('**********************************************************')
-df_adjprice = []
-for file in selected_files:
-    if file.endswith('.csv'):
-        df_tmp = pd.read_csv(file)
-    elif file.endswith('.xlsx'):
-        df_tmp = pd.read_excel(file)
-    else:
-        continue
-    df_adjprice.append(df_tmp)
-
-df_adjprice = df_adjprice[0]
-df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
-df['MarketPrice'] = df['MarketPrice'].replace('', np.nan).astype(float)
-
-def get_non_nan_columns(df, idx):
-    row = df.loc[idx]
-    return [col for col in df.columns if pd.notna(row[col]) and col != "Discount/Addition"]
-# Extract non-NaN columns for each row in the DataFrame and store in a list
-output = [get_non_nan_columns(df_adjprice, idx) for idx in df_adjprice.index]
-
-def apply_discounts(df, df_adjprice):
-    # Initializations
-    df['Discount'] = np.nan
-    df['AdjustedPrice'] = df['MarketPrice']
-    df['Matched'] = False  # Column to indicate if a match was found
-    df['MatchedStatus'] = None  
-
-    # Dynamically generate filter_list
-    filter_list = list(set(df_adjprice.columns).intersection(set(df.columns)))
-
-    for idx, main_row in df.iterrows():
-        matched = False
-        # Dynamically generate perfect match condition
-        conditions = [df_adjprice[col] == main_row[col] for col in filter_list if col in df.columns]
-        perfect_match_condition = np.logical_and.reduce(conditions, axis=0)
-        perfect_match = df_adjprice[perfect_match_condition]
-        # matchCol = [get_non_nan_columns(perfect_match, idx) for idx in perfect_match.index]
-
-        if not perfect_match.empty:
-            matched = True
-            discount = perfect_match['Discount/Addition'].values[0]
-            matchCol = [get_non_nan_columns(perfect_match, idx) for idx in perfect_match.index]
-
-        # Generate conditions for partial matches
-        for i in range(len(filter_list), 0, -1):
-            if matched: 
-                break
-            for subset in combinations(filter_list, i):  # Consider all combinations of i elements
-                conditions = [df_adjprice[col] == main_row[col] for col in subset]
-                null_conditions = [pd.isnull(df_adjprice[col]) for col in filter_list if col not in subset]
-                all_conditions = conditions + null_conditions
-                combined_condition = np.logical_and.reduce(all_conditions, axis=0)
-
-                partial_match = df_adjprice[combined_condition]
-                if not partial_match.empty:
-                    matched = True
-                    discount = partial_match['Discount/Addition'].values[0]
-                    matchCol = [get_non_nan_columns(partial_match, idx) for idx in partial_match.index]
-                    break  # If match found, exit the inner loop
-
-        # Apply discount if matched
-        if matched:
-            df.at[idx, 'Discount'] = float(discount)
-            df.at[idx, 'AdjustedPrice'] = df.at[idx, 'MarketPrice'] + (df.at[idx, 'MarketPrice'] * float(discount) / 100)
-            df.at[idx, 'Matched'] = True
-            df.at[idx, 'AdjustedStatus'] = matchCol[0]
+        except KeyError as ke:
+            # This will catch if one of the columns in columns_tokens doesn't exist in df_vendor_filt or df_DMS.
+            print(f"Error: Column '{ke}' not found in the DataFrame. Try again.")
+            
+        except ValueError as ve:
+            # This will catch the custom exception we raised if no columns were selected.
+            print(f"Error: {ve}. Try again.")
+            
+        except Exception as e:
+            # This will catch any other general exceptions and errors.
+            print(f"An unexpected error occurred: {e}. Try again.")
+        
+        # Optionally, add a way for users to exit the loop
+        choice = input("Do you want to continue? (yes/no): ").strip().lower()
+        if choice == 'no':
+            break
+    #%%  Database
+    df_dmsprocess = df_DMS
+    # Select DMS Column
+    while True:
+        columns_keys = ['BrandCode','BrandNameEng', 'ModelCode', 'ModelName']
+        # Check for odd number of columns
+        if len(columns_keys) % 2 != 0:
+            messagebox.showwarning("Warning", "Please select an even number of columns!")
+            continue
         else:
-            print(f"Data in row {idx} of df does not match with df_adjprice for filters: {filter_list}")
-    return df
+            print("Selected Columns:", columns_keys)
+            break
 
-updated_df = apply_discounts(df, df_adjprice)
-print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
+    app = DataMatcher(df_vendor_filt, df_dmsprocess, columns_keys)
+    app.run()
+    df_vendor_filt = app.df_vendor_filt
 
-#%% Save File
-now = datetime.now()
-date_time = now.strftime("%Y%m%d_%H%M%S")
-root = search_for_file_path()
-save_path = os.path.dirname(root)
+    #%% Filter Mapping
+    if __name__ == '__main__':
+        root = tk.Tk()
+        app_match = DataMerger(root, df_vendor_curr, df_vendor_filt, mapp_price)
+        root.mainloop()
+        df_vendor = app_match.get_df_vendor() 
+        df_aaprice = app_match.result
+    # save_master_list_to_csv(df_vendor, '', save_path, date_time,"","vendor_adeddprice" )
 
-def round_to_3_sig_figs(num):
-    # If the value is NaN, return NaN
-    if pd.isna(num):
-        return np.nan
-    
-    if isinstance(num, int):
-        return round(num, -int(len(str(abs(num))) - 3))
-    else:
-        count = 0
-        while abs(num) < 100:
-            num *= 10
-            count += 1
-        rounded = round(num, -int(len(str(int(abs(num)))) - 3))
-        return rounded / (10**count)
+    #%% Merge DMS price Data 
+    # Grouping by and aggregating the median
+    lst = ['BrandCode', 'ModelCode', 'Grade', 'CarAge']
+    app_aaamatch = DMSDataMerger(df_vendor, df_DMSPrice, lst)
+    merged_df = app_aaamatch.run()
+    # Rounding and converting MeanOpenPrice and MeanSoldPrice columns to integers
+    merged_df['AAA_OpenPrice'] = merged_df['AAA_OpenPrice'].round(0).astype('Int64')
 
-df_vendor['MeanOpenPrice'] = updated_df['AAA_OpenPrice'].apply(round_to_3_sig_figs)
-df_vendor['MeanSoldPrice'] = updated_df['AAA_SoldPrice'].apply(round_to_3_sig_figs)
-df_vendor['PriceStatus_AAA'] = updated_df['AAA_PriceStatus']
-df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
-df_vendor['Discount/Addition'] = updated_df['Discount']
-df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
+    merged_df['AAA_SoldPrice'] = merged_df['AAA_SoldPrice'].round(0).astype('Int64')
 
-listCol = ['ItemCode', 'VinNo', 'ContractNo', 'BrandCode', 'BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 
-           'ManufactureYear', 'Grade', 'InQuality', 'CcName', 'GearName', 'drive', 'Color', 'MilesNo', 'ReceivedDate', 'UpdatedDate', 
-           'CarAge', 'MarketPrice', 'AdjustedPrice', 'PriceStatus',  'MeanOpenPrice', 'MeanSoldPrice', 'PriceStatus_AAA',
-           'Discount/Addition', 'AdjustedStatus']
-df_result = df_vendor[listCol]
-filenameSave = original_filename + "_estprice" 
-save_master_list_to_csv(df_result, '', save_path, date_time,'',filenameSave)
+    #%% Adjust Price ------------------------------------------------------------------------
+    df = merged_df
+    # Load Adjust Price Data (Add Exception)
+    print('**************** Data to Adjust Price Loading **********************')
+    selected_files = select_files()
+    root = os.path.dirname(selected_files[0])
+    print(f'File Number: {len(selected_files)}')
+    print('**********************************************************')
+    df_adjprice = []
+    for file in selected_files:
+        if file.endswith('.csv'):
+            df_tmp = pd.read_csv(file)
+        elif file.endswith('.xlsx'):
+            df_tmp = pd.read_excel(file)
+        else:
+            continue
+        df_adjprice.append(df_tmp)
+
+    df_adjprice = df_adjprice[0]
+    df_adjprice['Grade']=df_adjprice['Grade'].astype(str)
+    df['MarketPrice'] = df['MarketPrice'].replace('', np.nan).astype(float)
+
+    def get_non_nan_columns(df, idx):
+        row = df.loc[idx]
+        return [col for col in df.columns if pd.notna(row[col]) and col != "Discount/Addition"]
+    # Extract non-NaN columns for each row in the DataFrame and store in a list
+    output = [get_non_nan_columns(df_adjprice, idx) for idx in df_adjprice.index]
+
+    def apply_discounts(df, df_adjprice):
+        # Initializations
+        df['Discount'] = np.nan
+        df['AdjustedPrice'] = df['MarketPrice']
+        df['Matched'] = False  # Column to indicate if a match was found
+        df['MatchedStatus'] = None  
+
+        # Dynamically generate filter_list
+        filter_list = list(set(df_adjprice.columns).intersection(set(df.columns)))
+
+        for idx, main_row in df.iterrows():
+            matched = False
+            # Dynamically generate perfect match condition
+            conditions = [df_adjprice[col] == main_row[col] for col in filter_list if col in df.columns]
+            perfect_match_condition = np.logical_and.reduce(conditions, axis=0)
+            perfect_match = df_adjprice[perfect_match_condition]
+            # matchCol = [get_non_nan_columns(perfect_match, idx) for idx in perfect_match.index]
+
+            if not perfect_match.empty:
+                matched = True
+                discount = perfect_match['Discount/Addition'].values[0]
+                matchCol = [get_non_nan_columns(perfect_match, idx) for idx in perfect_match.index]
+
+            # Generate conditions for partial matches
+            for i in range(len(filter_list), 0, -1):
+                if matched: 
+                    break
+                for subset in combinations(filter_list, i):  # Consider all combinations of i elements
+                    conditions = [df_adjprice[col] == main_row[col] for col in subset]
+                    null_conditions = [pd.isnull(df_adjprice[col]) for col in filter_list if col not in subset]
+                    all_conditions = conditions + null_conditions
+                    combined_condition = np.logical_and.reduce(all_conditions, axis=0)
+
+                    partial_match = df_adjprice[combined_condition]
+                    if not partial_match.empty:
+                        matched = True
+                        discount = partial_match['Discount/Addition'].values[0]
+                        matchCol = [get_non_nan_columns(partial_match, idx) for idx in partial_match.index]
+                        break  # If match found, exit the inner loop
+
+            # Apply discount if matched
+            if matched:
+                df.at[idx, 'Discount'] = float(discount)
+                df.at[idx, 'AdjustedPrice'] = df.at[idx, 'MarketPrice'] + (df.at[idx, 'MarketPrice'] * float(discount) / 100)
+                df.at[idx, 'Matched'] = True
+                df.at[idx, 'AdjustedStatus'] = matchCol[0]
+            else:
+                print(f"Data in row {idx} of df does not match with df_adjprice for filters: {filter_list}")
+        return df
+
+    updated_df = apply_discounts(df, df_adjprice)
+    print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
+
+    #%% Save File
+    now = datetime.now()
+    date_time = now.strftime("%Y%m%d_%H%M%S")
+    root = search_for_file_path()
+    save_path = os.path.dirname(root)
+
+    def round_to_3_sig_figs(num):
+        # If the value is NaN, return NaN
+        if pd.isna(num):
+            return np.nan
+        
+        if isinstance(num, int):
+            return round(num, -int(len(str(abs(num))) - 3))
+        else:
+            count = 0
+            while abs(num) < 100:
+                num *= 10
+                count += 1
+            rounded = round(num, -int(len(str(int(abs(num)))) - 3))
+            return rounded / (10**count)
+
+    df_vendor['MeanOpenPrice'] = updated_df['AAA_OpenPrice'].apply(round_to_3_sig_figs)
+    df_vendor['MeanSoldPrice'] = updated_df['AAA_SoldPrice'].apply(round_to_3_sig_figs)
+    df_vendor['PriceStatus_AAA'] = updated_df['AAA_PriceStatus']
+    df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
+    df_vendor['Discount/Addition'] = updated_df['Discount']
+    df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
+
+    listCol = ['ItemCode', 'VinNo', 'ContractNo', 'BrandCode', 'BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 
+            'ManufactureYear', 'Grade', 'InQuality', 'CcName', 'GearName', 'drive', 'Color', 'MilesNo', 'ReceivedDate', 'UpdatedDate', 
+            'CarAge', 'MarketPrice', 'AdjustedPrice', 'PriceStatus',  'MeanOpenPrice', 'MeanSoldPrice', 'PriceStatus_AAA']
+            #    'Discount/Addition', 'AdjustedStatus']
+    df_result = df_vendor[listCol]
+    filenameSave = original_filename + "_estprice" 
+    save_master_list_to_csv(df_result, '', save_path, date_time,'',filenameSave)
+
+    try:
+        X_program = input(f'Please enter (exit) to end the program: ').lower()
+        if X_program == "exit":
+            break
+    except:
+        print("Please check your input")
+
+
