@@ -499,11 +499,8 @@ while True:
         # Initializations
         df['Discount'] = np.nan
         df['AdjustedPrice'] = df['MarketPrice']
-        df['AdjustedPrice_AAA'] = df['AAA_AdjOpenPrice']
         df['Matched'] = False  # Column to indicate if a match was found
         df['MatchedStatus'] = None  
-        df['Matched_AAA'] = False  # Column to indicate if a match was found
-        df['MatchedStatus_AAA'] = None  
 
         # Dynamically generate filter_list
         filter_list = list(set(df_adjprice.columns).intersection(set(df.columns)))
@@ -542,18 +539,14 @@ while True:
             if matched:
                 df.at[idx, 'Discount'] = float(discount)
                 df.at[idx, 'AdjustedPrice'] = df.at[idx, 'MarketPrice'] + (df.at[idx, 'MarketPrice'] * float(discount) / 100)
-                df.at[idx, 'AdjustedPrice_AAA'] = df.at[idx, 'AAA_AdjOpenPrice'] + (df.at[idx, 'AAA_AdjOpenPrice'] * float(discount) / 100)
                 df.at[idx, 'Matched'] = True
                 df.at[idx, 'AdjustedStatus'] = matchCol[0]
-                df.at[idx, 'Matched_AAA'] = True
-                df.at[idx, 'AdjustedStatus_AAA'] = matchCol[0]
             else:
                 print(f"Data in row {idx} of df does not match with df_adjprice for filters: {filter_list}")
         return df
 
     updated_df = apply_discounts(df, df_adjprice)
-    # print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched']])
-    # print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'AAA_OpenPrice', 'Discount', 'AdjustedPrice_AAA', 'Matched_AAA']])
+    print(updated_df[['Grade', 'BrandCode', 'ModelCode', 'MarketPrice', 'Discount', 'AdjustedPrice', 'Matched', 'MatchedStatus']])
 
     #%% Save File
     now = datetime.now()
@@ -577,34 +570,19 @@ while True:
             return rounded / (10**count)
 
     df_vendor['MeanOpenPrice'] = updated_df['AAA_OpenPrice'].apply(round_to_3_sig_figs)
-    df_vendor['MeanOpenPrice'] = updated_df['AAA_OpenPrice'].apply(round_to_3_sig_figs)
     df_vendor['MeanSoldPrice'] = updated_df['AAA_SoldPrice'].apply(round_to_3_sig_figs)
     df_vendor['PriceStatus_AAA'] = updated_df['AAA_PriceStatus']
     df_vendor['AdjustedPrice'] = updated_df['AdjustedPrice']
-    df_vendor['AAA_AdjOpenPrice'] = updated_df['AdjustedPrice_AAA']
     df_vendor['Discount/Addition'] = updated_df['Discount']
     df_vendor['AdjustedStatus'] = updated_df['AdjustedStatus']
 
     listCol = ['ItemCode', 'VinNo', 'ContractNo', 'BrandCode', 'BrandNameEng', 'ModelCode', 'ModelName', 'SubModelCode', 'SubModelName', 
             'ManufactureYear', 'Grade', 'InQuality', 'CcName', 'GearName', 'drive', 'Color', 'MilesNo', 'ReceivedDate', 'UpdatedDate', 
-            'Year','CarAge', 'MarketPrice', 'AdjustedPrice', 'PriceStatus',  'MeanOpenPrice', 'AAA_AdjOpenPrice', 'MeanSoldPrice', 
-            'PriceStatus_AAA', 'Discount/Addition']
+            'CarAge', 'MarketPrice', 'AdjustedPrice', 'PriceStatus',  'MeanOpenPrice', 'MeanSoldPrice', 'PriceStatus_AAA']
             #    'Discount/Addition', 'AdjustedStatus']
     df_result = df_vendor[listCol]
-    
-    # Add to Mapping data Contractno
-    lst_header1 = list(df_vendor_tmp.columns)
-    lst_header2 = ['VinNo','CarAge', 'MarketPrice', 'AdjustedPrice', 'PriceStatus',  'MeanOpenPrice', 'AAA_AdjOpenPrice', 'MeanSoldPrice', 'PriceStatus_AAA', 'Discount/Addition']
-    df_result_tmp = df_vendor_tmp.merge(df_result[lst_header2], on=['VinNo'], how='left')
-    df_result_tmp['Year'] = df_result['Year']
-
-    # String Type
-    columnsList = ['Account','ContractNo']#(or specific columns that you need)
-    for col in columnsList:
-        df_result_tmp[col] =  df_result_tmp[col].apply(lambda x: "" + str(x) + "")
-
     filenameSave = original_filename + "_estprice" 
-    save_master_list_to_csv(df_result_tmp, '', save_path, date_time,'',filenameSave)
+    save_master_list_to_csv(df_result, '', save_path, date_time,'',filenameSave)
 
     try:
         X_program = input(f'Please enter (exit) to end the program: ').lower()
@@ -612,4 +590,5 @@ while True:
             break
     except:
         print("Please check your input")
+
 

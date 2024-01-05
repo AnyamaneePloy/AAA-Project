@@ -6,7 +6,6 @@ import pyodbc
 import datetime
 import tkinter as tk
 from tkinter import filedialog
-from decimal import Decimal
 
 from zColumnSelector import ColumnSelector
 from zColumnMapping import ColumnMapping
@@ -144,33 +143,28 @@ class DataSellerMapping:
         self.transformed_data['UpdatedDate'] = pd.to_datetime(self.transformed_data['UpdatedDate'])
         self.transformed_data.sort_values(by=['VinNo', 'UpdatedDate'], ascending=[True, False], inplace=True)
 
-        # # Group by 'VinNo' and process each group
-        # filled_data_list = pd.DataFrame()
-        # countD = 0
-        # for _, group in self.transformed_data.groupby('VinNo'):
-        #     if len(group) > 1:
-        #         # Sort group by 'UpdatedDate' so that the latest entry is first
-        #         group.sort_values(by='UpdatedDate', ascending=False, inplace=True)
-        #         # Take the latest row and fill its missing data from other rows
-        #         latest_row = group.iloc[0]
-        #         other_rows = group.iloc[1:]
-        #         filled_latest_row = self.fill_missing_from_others(latest_row, other_rows)
-        #         filled_data_list= filled_data_list.append(filled_latest_row , ignore_index=True)
-        #         countD +=1
-        #     else:
-        #         filled_data_list = filled_data_list.append(group , ignore_index=True)
-
-        # if filled_data_list.shape[0] >0:
-        #     self.filled_data = filled_data_list
-        self.filled_data =  self.transformed_data
+        # Group by 'VinNo' and process each group
+        self.filled_data = pd.DataFrame()
+        countD = 0
+        for _, group in self.transformed_data.groupby('VinNo'):
+            if len(group) > 1:
+                # Sort group by 'UpdatedDate' so that the latest entry is first
+                group.sort_values(by='UpdatedDate', ascending=False, inplace=True)
+                # Take the latest row and fill its missing data from other rows
+                latest_row = group.iloc[0]
+                other_rows = group.iloc[1:]
+                filled_latest_row = self.fill_missing_from_others(latest_row, other_rows)
+                self.filled_data = self.filled_data.append(filled_latest_row, ignore_index=True)
+                countD +=1
+            else:
+                self.filled_data = self.filled_data.append(group, ignore_index=True)
 
         # Remove any potential duplicates after filling
         self.filled_data.drop_duplicates(subset=['VinNo'], keep='first', inplace=True)
         self.filled_data.reset_index(drop=True, inplace=True)
         self.filled_data["Year"] = self.filled_data["ManufactureYear"]
         return self.filled_data
-    # Function to safely convert to float
-    
+
     def process_dates(self, dataframe):
         dataframe.loc[:, 'date_Received'] = dataframe['ReceivedDate'].dt.date
         dataframe.loc[:, 'year_Received'] = dataframe['ReceivedDate'].dt.year
@@ -178,16 +172,6 @@ class DataSellerMapping:
         dataframe.loc[:, 'week_Received'] = dataframe['ReceivedDate'].dt.isocalendar().week
         
         # Assuming 'CreatedDate' and 'ManuYear' columns exist in the dataframe:
-        # Convert both columns to float
-        dataframe['year_Received'] = dataframe['year_Received'].apply(float)
-        def safe_float_convert(x):
-            try:
-                return float(x)
-            except (TypeError, ValueError):
-                return x  # Return the original value if it's not convertible to float
-        dataframe['Year'] = dataframe['Year'].apply(safe_float_convert)
-
-        # Perform the subtraction
         dataframe.loc[:, 'CarAge'] = dataframe['year_Received'] - dataframe['Year'] # changing year to age
         dataframe['Grade'] = dataframe['Grade'].replace('A', 'R')      
         return dataframe
